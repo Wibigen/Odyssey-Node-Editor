@@ -1,10 +1,11 @@
 """Settings dialog: required folders, catalog extraction (in a thread), exlaunch project, build command."""
 from pathlib import Path
 from PySide6.QtCore import QThread, Qt, Signal
-from PySide6.QtWidgets import (QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressBar,
+from PySide6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressBar,
                                QPushButton, QVBoxLayout, QWidget)
 
 from .catalog import extract, find_demangler
+from .shells import ENVS, default_env, wsl_distros
 from .config import decomp_ok, load_catalog, main_cpp_path, save_config
 
 
@@ -45,6 +46,12 @@ class SetupDialog(QDialog):
         self.proj = QLineEdit(cfg['project_dir']); f2.addRow('Folder', path_row(self.proj, True, 'exlaunch project folder'))
         self.main = QLineEdit(cfg['main_cpp']); self.main.setPlaceholderText('empty = <project>/src/program/main.cpp'); f2.addRow('main.cpp', path_row(self.main, False, 'main.cpp file'))
         self.cmd = QLineEdit(cfg['build_cmd']); f2.addRow('Build command', self.cmd)
+        self.env = QComboBox(); self.env.addItem('- choose -', '')
+        for k, lab in ENVS: self.env.addItem(lab, k)
+        self.env.setCurrentIndex(max(0, self.env.findData(cfg.get('build_env') or default_env()))); f2.addRow('Run the build in', self.env)
+        self.distro = QComboBox(); self.distro.setEditable(True); self.distro.addItems(wsl_distros()); self.distro.setCurrentText(cfg.get('wsl_distro', ''))
+        self.distro.setToolTip('Empty = your default WSL distribution'); self.distro_l = QLabel('WSL distribution'); f2.addRow(self.distro_l, self.distro)
+        self.env.currentIndexChanged.connect(self._env_changed); self._env_changed()
         g3 = QGroupBox('Advanced'); f3 = QFormLayout(g3)
         self.dem = QLineEdit(cfg['demangler']); self.dem.setPlaceholderText('auto: devkitPro, llvm-cxxfilt, c++filt'); f3.addRow('Demangler', self.dem)
         self.flt = QLineEdit(cfg['filter']); f3.addRow('Filter (regex)', self.flt)
@@ -58,7 +65,10 @@ class SetupDialog(QDialog):
 
     def collect(self):
         self.cfg.update(decomp_dir=self.decomp.text().strip(), project_dir=self.proj.text().strip(), main_cpp=self.main.text().strip(),
-                        build_cmd=self.cmd.text().strip(), demangler=self.dem.text().strip(), filter=self.flt.text().strip()); return self.cfg
+                        build_cmd=self.cmd.text().strip(), build_env=self.env.currentData() or '', wsl_distro=self.distro.currentText().strip(), demangler=self.dem.text().strip(), filter=self.flt.text().strip()); return self.cfg
+
+    def _env_changed(self):
+        w = self.env.currentData() == 'wsl'; self.distro.setVisible(w); self.distro_l.setVisible(w)
 
     def refresh(self):
         c = self.collect(); n = len(load_catalog()); dm = find_demangler(c['demangler'])

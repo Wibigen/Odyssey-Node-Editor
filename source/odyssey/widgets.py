@@ -6,6 +6,7 @@ from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea,
                                QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
+from .shells import invocation
 from .graph import COMMON_TYPES, E, GRP, NODE_FIELDS, PRE
 from .valueedit import make_editor
 
@@ -166,17 +167,18 @@ class BuildRunner(QObject):
 
     def running(self): return self.p is not None
 
-    def start(self, cmd, cwd):
+    def start(self, cmd, cwd, env='', distro=''):
         if self.p: return
         self.p = QProcess(self); self.p.setProcessChannelMode(QProcess.MergedChannels)
-        if cwd: self.p.setWorkingDirectory(cwd)
-        if os.name == 'nt': self.p.setProgram('cmd.exe'); self.p.setNativeArguments(f'/S /C "chcp 65001>nul & {cmd}"')
-        else: self.p.setProgram('/bin/sh'); self.p.setArguments(['-c', cmd])
+        prog, args, native = invocation(env, distro, cmd, cwd)
+        if cwd and env != 'wsl' and os.path.isdir(cwd): self.p.setWorkingDirectory(cwd)  # for WSL the folder is passed with --cd
+        self.p.setProgram(prog); self.p.setArguments(args)
+        if native and hasattr(self.p, 'setNativeArguments'): self.p.setNativeArguments(native)
         self.p.readyRead.connect(lambda: self.output.emit(bytes(self.p.readAll()).decode('utf-8', 'replace')))
         self.p.errorOccurred.connect(self._err); self.p.finished.connect(self._fin); self.p.start()
 
     def _err(self, e):
-        if e == QProcess.FailedToStart: self.output.emit('Could not start the command.\n'); self._fin(1)
+        if e == QProcess.FailedToStart: self.output.emit('Could not start the command (is WSL installed and the distro name right? Check Settings > Build environment).\n'); self._fin(1)
 
     def _fin(self, code, *_):
         if self.p: p, self.p = self.p, None; p.deleteLater(); self.done.emit(int(code))

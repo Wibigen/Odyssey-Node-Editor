@@ -1,4 +1,4 @@
-# Odyssey Nodes  (v1.1)
+# Odyssey Nodes  (v1.2)
 
 A native desktop tool (Python + PySide6, no browser) for building **Super Mario Odyssey 1.0.0 exefs mods** with Blueprint-style nodes.
 It generates [exlaunch](https://github.com/shadowninja108/exlaunch) C++ that compiles against your OdysseyDecomp fork.
@@ -16,7 +16,7 @@ The setup dialog asks for your **OdysseyDecomp folder**. The tool reads `data/fi
 - Inputs of any block can hold a typed fixed value instead of a wire; the value is shown on the node.
 - **Inspector**: signature, return type, offset with the symbol under it, status, settings, inputs (wired or fixed), outputs, Duplicate / Disconnect / Delete, and *Edit this block...*.
 - **Output panel**: C++ code, Includes, Problems, Build. Collapse it with the arrow, Ctrl+J, or by double-clicking a tab.
-- **Compile** (F5) runs your build command and shows the log; **Write to project** saves the C++ into your `main.cpp`.
+- **Compile** (F5) runs your build command and shows the log. Choose where it runs in Settings: Windows (cmd), **WSL** (pick your distro, e.g. Ubuntu) or the native shell; the first Compile asks. Project folders like `\\wsl$\Ubuntu\home\me\proj` work; **Write to project** saves the C++ into your `main.cpp`.
 - Graphs are saved as `.odn` (autosaved too). Undo/redo, duplicate, zoom/pan, fit view.
 
 Shortcuts: Ctrl+F browse, Ctrl+Z/Y undo/redo, Ctrl+D duplicate, Del delete, Ctrl+A select all, F fit, Ctrl+J output, Ctrl+E write, F5 compile, Ctrl+S/O/N.

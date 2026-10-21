@@ -3,12 +3,13 @@ import re
 from pathlib import Path
 from PySide6.QtCore import QPointF, QSettings, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QRadialGradient
-from PySide6.QtWidgets import (QDockWidget, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
+from PySide6.QtWidgets import (QDockWidget, QInputDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
                                QPlainTextEdit, QPushButton, QStackedWidget, QTabWidget, QWidget)
 
 from .canvas import GraphScene, GraphView
 from . import __version__
-from .config import GRAPHF, decomp_ok, load_catalog, load_config, main_cpp_path, resource
+from .shells import wsl_distros
+from .config import GRAPHF, decomp_ok, load_catalog, load_config, main_cpp_path, resource, save_config
 from .function_dialog import FunctionDialog
 from .graph import DEFAULT_INC, GRP, PRE, Graph, sample
 from .setup_dialog import SetupDialog
@@ -234,11 +235,27 @@ class MainWindow(QMainWindow):
     def build(self):
         if self.runner.running(): self.runner.stop(); return
         if not self.cfg['build_cmd']: QMessageBox.information(self, 'Compile', 'The build command is empty: see Settings.'); self.configure(); return
-        cwd = self.cfg['project_dir'] or None
-        if cwd and not Path(cwd).is_dir(): QMessageBox.warning(self, 'Compile', f'Project folder not found: {cwd}'); return
+        if not self.cfg.get('build_env') and not self.ask_env(): return
+        env, cwd = self.cfg['build_env'], self.cfg['project_dir'] or None
+        if cwd and not (env == 'wsl' and cwd.startswith('/')) and not Path(cwd).is_dir(): QMessageBox.warning(self, 'Compile', f'Project folder not found: {cwd}'); return
         if not self.write_project(): return
-        self.toggle_output(False); self.tabs.setCurrentWidget(self.log); self.log.clear(); self.log.appendPlainText(f'$ {self.cfg["build_cmd"]}\n')
-        self.bBuild.setText('■ Stop'); self.bst.setText('Build running…'); self.bst.setStyleSheet(''); self.runner.start(self.cfg['build_cmd'], cwd)
+        self.toggle_output(False); self.tabs.setCurrentWidget(self.log); self.log.clear(); self.log.appendPlainText(f'[{env}{" · " + self.cfg.get("wsl_distro", "") if env == "wsl" and self.cfg.get("wsl_distro") else ""}] $ {self.cfg["build_cmd"]}\n')
+        self.bBuild.setText('■ Stop'); self.bst.setText('Build running…'); self.bst.setStyleSheet(''); self.runner.start(self.cfg['build_cmd'], cwd, env, self.cfg.get('wsl_distro', ''))
+
+    def ask_env(self):
+        """First compile on Windows: ask where the build tools live (WSL or Windows) and remember the answer."""
+        box = QMessageBox(self); box.setWindowTitle('Compile'); box.setIcon(QMessageBox.Question)
+        box.setText('Where do you build your exlaunch project?'); box.setInformativeText('WSL runs the command inside a Linux distribution (Ubuntu...). Windows runs it with cmd.exe. You can change this later in Settings.')
+        bw = box.addButton('WSL (Linux)', QMessageBox.AcceptRole); bn = box.addButton('Windows (cmd)', QMessageBox.AcceptRole); box.addButton(QMessageBox.Cancel); box.exec(); c = box.clickedButton()
+        if c is bn: self.cfg['build_env'] = 'windows'
+        elif c is bw:
+            ds = wsl_distros()
+            if ds: d, ok = QInputDialog.getItem(self, 'WSL distribution', 'Which distribution builds the project?', ds, 0, True)
+            else: d, ok = QInputDialog.getText(self, 'WSL distribution', 'No distribution found automatically. Name (empty = default):')
+            if not ok: return False
+            self.cfg.update(build_env='wsl', wsl_distro=d.strip())
+        else: return False
+        save_config(self.cfg); return True
 
     def log_out(self, s):
         self.log.moveCursor(self.log.textCursor().MoveOperation.End); self.log.insertPlainText(ANSI.sub('', s).replace('\r\n', '\n')); self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())

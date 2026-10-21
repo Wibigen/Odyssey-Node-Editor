@@ -16,7 +16,7 @@ DATA.mkdir(parents=True, exist_ok=True)
 CFGF, CATF, GRAPHF = DATA / 'config.json', DATA / 'catalog.json', DATA / 'graph.json'
 NOWIN = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
-DEFAULTS = dict(decomp_dir='', project_dir='', main_cpp='', build_cmd='cmake --build build', demangler='',
+DEFAULTS = dict(decomp_dir='', project_dir='', main_cpp='', build_cmd='cmake --build build', build_env='', wsl_distro='', demangler='',
                 filter=r'^(al|rs)::|^(StageScene|PlayerActorHakoniwa|GameDataFunction|PlayerFunction)::')
 
 
