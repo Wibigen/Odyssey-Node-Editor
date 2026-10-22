@@ -22,7 +22,9 @@ def wsl_distros():
 
 def wsl_location(path, distro):
     """(distro, directory as wsl.exe wants it). \\\\wsl$\\Ubuntu\\home\\me\\p becomes /home/me/p and selects Ubuntu."""
-    m = UNC.match(path or '')
+    path = path or ''
+    if path[:2] in ('//', '\\\\'): path = '\\\\' + path[2:].replace('/', '\\')  # //wsl.localhost/Ubuntu/x (forward slashes) -> \\wsl.localhost\Ubuntu\x
+    m = UNC.match(path)
     if m: return m.group(1), (m.group(2).replace('\\', '/') or '/')
     return distro, path
 

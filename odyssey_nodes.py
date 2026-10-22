@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Odyssey Nodes : point d'entrée (python odyssey_nodes.py)."""
+"""Odyssey Node Editor : point d'entrée (python odyssey_nodes.py)."""
 import sys
 from odyssey.app import main
 

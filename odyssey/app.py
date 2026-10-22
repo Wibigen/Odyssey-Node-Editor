@@ -11,5 +11,5 @@ def main():
         try:
             import ctypes; ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Wibigen.OdysseyNodes')
         except Exception: pass
-    app = QApplication(sys.argv); app.setApplicationName('Odyssey Nodes'); apply_theme(app); app.setWindowIcon(app_icon())
+    app = QApplication(sys.argv); app.setApplicationName('Odyssey Node Editor'); apply_theme(app); app.setWindowIcon(app_icon())
     w = MainWindow(); w.show(); return app.exec()

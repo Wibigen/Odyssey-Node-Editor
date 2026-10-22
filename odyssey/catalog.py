@@ -42,12 +42,13 @@ def extract(cfg, progress=lambda msg: None):
     root = Path(cfg['decomp_dir']); fl = root / 'data' / 'file_list.yml'
     if not fl.exists(): raise RuntimeError('data/file_list.yml not found: this folder is not OdysseyDecomp')
     inc = re.compile(cfg['filter'])
-    progress('Reading headers…'); rets = {}
+    progress('Reading headers…'); rets, statics, members = {}, set(), set()
     rx = re.compile(r'\s*(?:(?:static|virtual|inline|constexpr|\[\[nodiscard\]\])\s+)*([A-Za-z_][\w:<>,\s\*&]*?)\s+([A-Za-z_]\w*)\(')
     for h in [*root.glob('src/**/*.h'), *root.glob('lib/al/**/*.h')]:
         for l in h.read_text('utf-8', errors='ignore').splitlines():
             m = rx.match(l)
-            if m and m[1].strip() not in ('return', 'else', 'delete', 'new', 'case'): rets.setdefault(m[2], set()).add(m[1].strip())
+            if m and m[1].strip() not in ('return', 'else', 'delete', 'new', 'case'):
+                rets.setdefault(m[2], set()).add(m[1].strip()); (statics if l.lstrip().startswith('static ') else members).add(m[2])
     progress('Reading file_list.yml…')
     txt = fl.read_text('utf-8', errors='ignore').replace('\r', '')
     ent = [(int(o, 16), s, st) for o, _, s, st in re.findall(r'offset: (0x[0-9a-f]+)\n\s+size: (\d+)\n\s+label: (\S+)\n\s+status: (\w+)', txt) if s.startswith('_ZN')]
@@ -60,7 +61,8 @@ def extract(cfg, progress=lambda msg: None):
         cls = '::'.join(q[:-1]) if len(q) > 1 and q[-2][:1].isupper() else ''  # capitalised = class (heuristic)
         if cls and name.lstrip('~') == q[-2]: continue  # ctor/dtor
         r = rets.get(name); r = next(iter(r)) if r and len(r) == 1 else 'void'
-        res.append(dict(s=sym, o=off, n='::'.join(q), c=cls, p=([cls + '*'] if cls else []) + [x for x in split_args(m[2]) if x != 'void'], r=r, st=st[0]))
+        k = '' if not cls else 's' if name in statics and name not in members else 'm' if name in members and name not in statics else ''  # '' = not sure (the editor then guesses from the class name)
+        res.append(dict(s=sym, o=off, k=k, n='::'.join(q), c=cls, p=([cls + '*'] if cls else []) + [x for x in split_args(m[2]) if x != 'void'], r=r, st=st[0]))
     if not res: raise RuntimeError('No function extracted (filter too strict or unsuitable demangler)')
     CATF.write_text(json.dumps(res, separators=(',', ':')), 'utf-8')
     return res

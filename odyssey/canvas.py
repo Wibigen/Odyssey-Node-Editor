@@ -1,15 +1,24 @@
 """Work area: nodes, links, zoom/pan, drag & drop (Qt Graphics View)."""
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QFontMetricsF, QPainter, QPainterPath, QPainterPathStroker, QPen, QPolygonF, QTransform
+from PySide6.QtGui import QColor, QIcon, QPixmap, QFont, QFontMetricsF, QPainter, QPainterPath, QPainterPathStroker, QPen, QPolygonF, QTransform
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QMenu
 
-from .graph import E
+from .graph import CALLS, COLOR_NAMES, E
 from .theme import C, HEAD_COLORS, pin_color
 
-HEAD, ROW, SUB = 28, 22, 20
+HEAD, ROW, SUB, SAVEH = 28, 22, 20, 24
+ZOOM_MIN, ZOOM_MAX = 0.03, 6.0
+CH = 17  # header height of the small Math & logic nodes
 F_TITLE, F_PIN, F_SUB = QFont(), QFont(), QFont('Consolas')
 F_TITLE.setBold(True); F_TITLE.setPointSizeF(9.5); F_PIN.setPointSizeF(8.5); F_SUB.setPointSizeF(8.5)
 FM_T, FM_P = QFontMetricsF(F_TITLE), QFontMetricsF(F_PIN)
+
+
+COMPACT = ('op', 'cmp', 'logic', 'not')  # Math & logic nodes are drawn small and square
+
+
+def swatch(hex_):
+    pm = QPixmap(16, 16); pm.fill(QColor(hex_)); return QIcon(pm)
 
 
 def short(v, n=26):
@@ -28,17 +37,22 @@ class NodeItem(QGraphicsItem):
                 self.texts[d, p.id] = (p.label, ('= ' + short(v)) if v else '')
         wl = max([FM_P.horizontalAdvance(a + ('  ' + b if b else '')) for (d, _), (a, b) in self.texts.items() if d == 'i'] or [0])
         wr = max([FM_P.horizontalAdvance(a) for (d, _), (a, b) in self.texts.items() if d == 'o'] or [0])
+        self.compact = node.type in COMPACT
         self.w = max(190.0, wl + wr + 56, min(FM_T.horizontalAdvance(self.title) + 28, 360.0))
-        self.y0 = HEAD + (SUB if self.sub else 0) + 8
+        f = node.f; self.saved = f.get('save') if node.type in CALLS and not f.get('inline') and g.ret_type(node) != 'void' else ''  # a call that keeps its result in a variable
+        self.y0 = HEAD + (SUB if self.sub else 0) + (SAVEH if self.saved else 0) + 8
         self.h = self.y0 + max(len(self.ins), len(self.outs), 1) * ROW + 6
+        if self.compact: self.w = self.h = 66.0
         self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges)
-        self.setAcceptHoverEvents(True); self.setZValue(1); self.setPos(node.x, node.y); self.setToolTip(self.title)
+        self.setAcceptHoverEvents(True); self.setZValue(1); self.setPos(node.x, node.y); self.setToolTip(self.title + ('' if not self.compact else '  (' + self.sub + ')' if self.sub else ''))
 
     def boundingRect(self): return QRectF(-14, -6, self.w + 28, self.h + 12)
     def shape(self):
         p = QPainterPath(); p.addRect(self.boundingRect()); return p
 
-    def pin_pos(self, d, k): return QPointF(0 if d == 'i' else self.w, self.y0 + k * ROW + ROW / 2)
+    def pin_pos(self, d, k):
+        if self.compact: n = len(self.ins if d == 'i' else self.outs); return QPointF(0 if d == 'i' else self.w, CH + (self.h - CH) * (k + 1) / (n + 1))
+        return QPointF(0 if d == 'i' else self.w, self.y0 + k * ROW + ROW / 2)
     def pin_index(self, d, pid): return next(i for i, p in enumerate(self.ins if d == 'i' else self.outs) if p.id == pid)
 
     def pin_at(self, pos):
@@ -49,8 +63,31 @@ class NodeItem(QGraphicsItem):
                 if dist <= 18 and (best is None or dist < best[0]): best = (dist, p.id, d)
         return best[1:] if best else None
 
+    KIND = {'op': 'Math', 'cmp': 'Compare', 'logic': 'Logic', 'not': 'Logic'}
+    SYMS = {'&&': 'AND', '||': 'OR', '==': '=', '!=': '≠', '<=': '≤', '>=': '≥'}  # conditions read as words / math signs, not as C++
+
+    def paint_compact(self, p):
+        W, H = self.w, self.h; n = self.node; col = QColor(HEAD_COLORS.get(n.type, '#6b7385'))
+        body = QPainterPath(); body.addRoundedRect(QRectF(0, 0, W, H), 10, 10); p.fillPath(body, QColor(C['node']))
+        p.save(); p.setClipPath(body); p.fillRect(QRectF(0, 0, W, CH), col); p.restore()
+        sel = self.isSelected(); p.setPen(QPen(QColor(C['ac']) if sel else QColor(C['ln']), 2.2 if sel else 1.4)); p.setBrush(Qt.NoBrush); p.drawPath(body)
+        f = QFont(F_TITLE); f.setPointSizeF(8); p.setFont(f); p.setPen(Qt.white); p.drawText(QRectF(8, 0, W - 16, CH), Qt.AlignVCenter | Qt.AlignLeft, self.KIND.get(n.type, self.title))
+        raw = 'NOT' if n.type == 'not' else str(n.f.get('op', '?')); sym = self.SYMS.get(raw, raw) if n.type != 'op' else raw
+        f = QFont(F_TITLE); f.setPointSizeF(15 if len(sym) < 3 else 9.5); p.setFont(f); p.setPen(Qt.white)
+        p.drawText(QRectF(26, CH, W - 36, H - CH - (12 if n.type in ('op', 'cmp') else 0)), Qt.AlignCenter, sym)
+        if n.type in ('op', 'cmp'): p.setFont(F_SUB); p.setPen(QColor('#8a91a5')); p.drawText(QRectF(24, H - 15, W - 34, 13), Qt.AlignCenter, str(n.f.get('type', '')))
+        p.setFont(F_SUB)
+        for k, pin in enumerate(self.ins):
+            pt = self.pin_pos('i', k); linked = self.scn.graph.linked(n.id, pin.id, 'i'); c = QColor(pin_color(pin.type))
+            p.setPen(QPen(c, 2)); p.setBrush(c if linked else QColor(C['node'])); p.drawEllipse(pt, 5, 5)
+            v = '' if linked else str(n.d.get(pin.id, '')).strip()
+            p.setPen(QColor('#7fd6c2') if v else QColor(C['mu'])); p.drawText(QRectF(pt.x() + 8, pt.y() - 9, 20, 18), Qt.AlignVCenter | Qt.AlignLeft, short(v, 4) if v else pin.label[:1])
+        for k, pin in enumerate(self.outs):
+            pt = self.pin_pos('o', k); c = QColor(pin_color(pin.type)); p.setPen(QPen(c, 2)); p.setBrush(c if self.scn.graph.linked(n.id, pin.id, 'o') else QColor(C['node'])); p.drawEllipse(pt, 5, 5)
+
     def paint(self, p, opt, widget=None):
         p.setRenderHint(QPainter.Antialiasing); W = self.w
+        if self.compact: return self.paint_compact(p)
         body = QPainterPath(); body.addRoundedRect(QRectF(0, 0, W, self.h), 10, 10)
         p.fillPath(body, QColor(C['node']))
         p.save(); p.setClipPath(body); p.fillRect(QRectF(0, 0, W, HEAD), QColor(HEAD_COLORS.get(self.node.type, '#6b7385'))); p.restore()
@@ -59,6 +96,9 @@ class NodeItem(QGraphicsItem):
         p.drawText(QRectF(10, 0, W - 20, HEAD), Qt.AlignVCenter | Qt.AlignLeft, FM_T.elidedText(self.title, Qt.ElideRight, W - 20))
         if self.sub:
             p.setFont(F_SUB); p.setPen(QColor('#b9c0d4')); p.drawText(QRectF(10, HEAD + 1, W - 20, SUB), Qt.AlignVCenter | Qt.AlignLeft, QFontMetricsF(F_SUB).elidedText(self.sub, Qt.ElideRight, W - 20))
+        if self.saved:  # the variable that receives the result, clearly readable
+            y = HEAD + (SUB if self.sub else 0) + 2; r = QRectF(10, y, W - 20, SAVEH - 4); p.setPen(QPen(QColor('#f0b429'), 1.2)); p.setBrush(QColor(240, 180, 41, 38)); p.drawRoundedRect(r, 6, 6)
+            f = QFont(F_TITLE); f.setPointSizeF(9.5); p.setFont(f); p.setPen(QColor('#ffd166')); p.drawText(r.adjusted(8, 0, -8, 0), Qt.AlignVCenter | Qt.AlignLeft, QFontMetricsF(f).elidedText('→ saved in  ' + self.saved, Qt.ElideRight, W - 36))
         p.setFont(F_PIN)
         for d, lst in (('i', self.ins), ('o', self.outs)):
             for k, pin in enumerate(lst):
@@ -88,9 +128,87 @@ class NodeItem(QGraphicsItem):
         ev.accept()
 
     def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemPositionChange and self.scn.snap and self.scn.mouseGrabberItem() is self:
+            g = self.scn.grid; return QPointF(round(value.x() / g) * g, round(value.y() / g) * g)
         if change == QGraphicsItem.ItemPositionHasChanged:
             self.node.x, self.node.y = value.x(), value.y(); self.scn.update_edges(); self.scn.moved.emit()
         return super().itemChange(change, value)
+
+
+class GroupItem(QGraphicsItem):
+    """A frame around some nodes (organisation only). Drag its title bar to move all of them."""
+    PAD, HEADH = 24, 30
+
+    def __init__(self, scn, gid):
+        super().__init__(); self.scn, self.gid = scn, gid; self._r = QRectF(0, 0, 10, 10); self._last = None
+        self.setFlags(QGraphicsItem.ItemIsSelectable); self.setZValue(-2); self.setAcceptHoverEvents(True); self.setCursor(Qt.OpenHandCursor); self.refresh()
+
+    def data_(self): return self.scn.graph.groups.get(self.gid, {})
+    def members(self): return [self.scn.node_items[i] for i in self.data_().get('nodes', []) if i in self.scn.node_items]
+
+    def refresh(self):
+        m = self.members()
+        if not m: return
+        r = QRectF(m[0].x(), m[0].y(), m[0].w, m[0].h)
+        for it in m[1:]: r = r.united(QRectF(it.x(), it.y(), it.w, it.h))
+        r = r.adjusted(-self.PAD, -self.PAD - self.HEADH, self.PAD, self.PAD)
+        if r != self._r: self.prepareGeometryChange(); self._r = r
+
+    def boundingRect(self): return self._r.adjusted(-3, -3, 3, 3)
+    def head(self): return QRectF(self._r.left(), self._r.top(), self._r.width(), self.HEADH)
+    def shape(self):
+        p = QPainterPath(); p.addRect(self.head()); return p
+
+    def paint(self, p, opt, widget=None):
+        d = self.data_(); col = QColor(d.get('color', '#3a7bd5')); r = self._r; p.setRenderHint(QPainter.Antialiasing)
+        body = QPainterPath(); body.addRoundedRect(r, 14, 14); f = QColor(col); f.setAlpha(30); p.fillPath(body, f)
+        p.save(); p.setClipPath(body); h = QColor(col); h.setAlpha(150 if self.isSelected() else 110); p.fillRect(self.head(), h); p.restore()
+        b = QColor(col); b.setAlpha(230 if self.isSelected() else 150); p.setPen(QPen(b, 2.6 if self.isSelected() else 1.6)); p.setBrush(Qt.NoBrush); p.drawPath(body)
+        p.setFont(F_TITLE); p.setPen(Qt.white); n = len(d.get('nodes', []))
+        p.drawText(self.head().adjusted(12, 0, -12, 0), Qt.AlignVCenter | Qt.AlignLeft, FM_T.elidedText(d.get('name', 'Group'), Qt.ElideRight, r.width() - 90))
+        p.setFont(F_PIN); p.setPen(QColor(255, 255, 255, 170)); p.drawText(self.head().adjusted(12, 0, -12, 0), Qt.AlignVCenter | Qt.AlignRight, f'{n} node{"s" if n != 1 else ""}')
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.LeftButton: self._last = ev.scenePos(); self.setCursor(Qt.ClosedHandCursor)
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev):
+        if self._last is not None and ev.buttons() & Qt.LeftButton:
+            d = ev.scenePos() - self._last; self._last = ev.scenePos()
+            for it in self.members(): it.setPos(it.pos() + d)
+            ev.accept(); return
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev): self._last = None; self.setCursor(Qt.OpenHandCursor); super().mouseReleaseEvent(ev)
+    def mouseDoubleClickEvent(self, ev): self.scn.group_edit.emit(self.gid); ev.accept()
+
+
+class NoteItem(QGraphicsItem):
+    """A free comment on the canvas (never part of the generated code)."""
+    W = 280
+
+    def __init__(self, scn, nid):
+        super().__init__(); self.scn, self.nid = scn, nid; d = scn.graph.notes[nid]; self.text = d.get('text', '')
+        self.rect = FM_P.boundingRect(QRectF(0, 0, self.W - 28, 10000), Qt.TextWordWrap, self.text or ' ').adjusted(0, 0, 0, 0)
+        self.h = max(46.0, self.rect.height() + 26)
+        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable | QGraphicsItem.ItemSendsGeometryChanges); self.setZValue(-1); self.setPos(d['x'], d['y'])
+        self.setToolTip('Comment (double-click to edit)')
+
+    def boundingRect(self): return QRectF(-3, -3, self.W + 6, self.h + 6)
+
+    def paint(self, p, opt, widget=None):
+        col = QColor(self.scn.graph.notes.get(self.nid, {}).get('color', '#c98a2b')); p.setRenderHint(QPainter.Antialiasing)
+        body = QPainterPath(); body.addRoundedRect(QRectF(0, 0, self.W, self.h), 8, 8); f = QColor(col); f.setAlpha(60); p.fillPath(body, f)
+        p.save(); p.setClipPath(body); p.fillRect(QRectF(0, 0, 6, self.h), col); p.restore()
+        p.setPen(QPen(col if self.isSelected() else QColor(col.red(), col.green(), col.blue(), 140), 2.4 if self.isSelected() else 1.2)); p.setBrush(Qt.NoBrush); p.drawPath(body)
+        p.setFont(F_PIN); p.setPen(QColor('#f3efe6')); p.drawText(QRectF(16, 12, self.W - 28, self.h - 20), Qt.TextWordWrap, self.text)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemPositionHasChanged and self.nid in self.scn.graph.notes:
+            d = self.scn.graph.notes[self.nid]; d['x'], d['y'] = value.x(), value.y(); self.scn.moved.emit()
+        return super().itemChange(change, value)
+
+    def mouseDoubleClickEvent(self, ev): self.scn.note_edit.emit(self.nid); ev.accept()
 
 
 def bezier(a, b):
@@ -128,14 +246,39 @@ class GraphScene(QGraphicsScene):
     node_activated = Signal(int)  # double-click on a node
     empty_double = Signal(QPointF)
     empty_menu = Signal(QPointF, QPoint)
+    group_edit = Signal(int)     # double-click on a group title
+    note_edit = Signal(int)      # double-click on a comment
+    link_dropped = Signal(int, str, str, QPointF, QPoint)  # a link was released on empty space: (node id, pin id, 'i'|'o', scene pos, screen pos)
+    find_request = Signal(str)   # 'Find in the graph' from a context menu (text to look for)
+    request = Signal(str, int)   # context menu actions handled by the window: 'group', 'ungroup', 'rename_group', 'select_group', ...
 
     def __init__(self, graph):
-        super().__init__(); self.graph = graph; self.node_items, self.edge_items = {}, []; self._link = None; self._temp = None; self._lock = False
-        self.setSceneRect(-30000, -30000, 60000, 60000); self.selectionChanged.connect(self._sel)
+        super().__init__(); self.graph = graph; self.node_items, self.edge_items, self.group_items, self.note_items = {}, [], {}, {}; self._link = None; self._temp = None; self._lock = False; self.snap, self.grid, self.links_top, self.autogroup, self._dragged = False, 24, False, True, False
+        self.search = ''; self.dropmenu = True
+        self.setSceneRect(-30000, -30000, 60000, 60000); self.selectionChanged.connect(self._sel); self.moved.connect(lambda: setattr(self, '_dragged', True))
 
     def _sel(self):
         if self._lock: return
-        ids = self.selected_ids(); self.picked.emit(ids[0] if len(ids) == 1 else 0)
+        ids = self.selected_ids(); self.picked.emit(ids[0] if len(ids) == 1 else 0); self.apply_z()
+
+    def apply_z(self):
+        """Option: the links of the selected nodes are drawn above everything else (nodes included)."""
+        sel = set(self.selected_ids()) if self.links_top else set()
+        for e in self.edge_items: e.setZValue(3 if sel and (e.edge[0][0] in sel or e.edge[1][0] in sel) else 0)
+
+    def set_search(self, text): self.search = text.strip(); return self.apply_search()
+
+    def apply_search(self):
+        """Grey out every node (and link) that does not mention the searched text. Returns the matching ids."""
+        hit = self.graph.search_ids(self.search) if self.search else None
+        for i, it in self.node_items.items(): it.setOpacity(1.0 if hit is None or i in hit else 0.14)
+        for e in self.edge_items: e.setOpacity(1.0 if hit is None or (e.edge[0][0] in hit and e.edge[1][0] in hit) else 0.08)
+        for g in self.group_items.values(): g.setOpacity(1.0 if hit is None or any(i in hit for i in g.data_().get('nodes', [])) else 0.3)
+        return hit or set()
+
+    @staticmethod
+    def search_term(n):
+        f = n.f; return str(f.get('save') or f.get('variable') or (f.get('name') if n.type != 'hook' else '') or f.get('member') or f.get('tpl') or '').strip()
 
     def selected_ids(self): return [i.node.id for i in self.selectedItems() if isinstance(i, NodeItem)]
 
@@ -146,15 +289,18 @@ class GraphScene(QGraphicsScene):
     def rebuild(self, keep=None):
         self._lock = True
         keep = set(self.selected_ids()) if keep is None else set(keep)
-        self.graph.prune(); self.clear(); self.node_items, self.edge_items, self._temp = {}, [], None
+        self.graph.prune(); self.clear(); self.node_items, self.edge_items, self.group_items, self.note_items, self._temp = {}, [], {}, {}, None
         for n in self.graph.nodes.values():
             it = NodeItem(self, n); self.addItem(it); self.node_items[n.id] = it; it.setSelected(n.id in keep)
         for e in self.graph.edges:
             it = EdgeItem(self, e); self.addItem(it); self.edge_items.append(it)
-        self._lock = False
+        for gid in self.graph.groups: g = GroupItem(self, gid); self.addItem(g); self.group_items[gid] = g
+        for nid in self.graph.notes: n = NoteItem(self, nid); self.addItem(n); self.note_items[nid] = n
+        self._lock = False; self.apply_z(); self.apply_search()
 
     def update_edges(self):
         for e in self.edge_items: e.update_path()
+        for g in self.group_items.values(): g.refresh()
 
     def commit(self, keep=None): self.rebuild(keep); self.changed.emit()
 
@@ -165,6 +311,8 @@ class GraphScene(QGraphicsScene):
         for it in self.selectedItems():
             if isinstance(it, NodeItem): self.graph.remove(it.node.id)
             elif isinstance(it, EdgeItem): self.graph.edges = [e for e in self.graph.edges if e != it.edge]
+            elif isinstance(it, GroupItem): self.graph.groups.pop(it.gid, None)   # only the frame goes away, never the nodes
+            elif isinstance(it, NoteItem): self.graph.notes.pop(it.nid, None)
         self.commit(keep=[])
 
     def duplicate_selected(self):
@@ -201,24 +349,82 @@ class GraphScene(QGraphicsScene):
             nid, pid, d, _ = self._link; self._link = None
             if self._temp: self.removeItem(self._temp); self._temp = None
             hit = self._pin_under(ev.scenePos())
-            if hit and self.graph.connect((nid, pid, d), (hit[0].node.id, hit[1][0], hit[1][1])): self.commit()
+            if hit and self.graph.connect((nid, pid, d), (hit[0].node.id, hit[1][0], hit[1][1])):
+                if self.autogroup:  # linking two nodes also groups them: the one without a group joins the other's group
+                    a, b = nid, hit[0].node.id; ga, gb = self.graph.group_of(a), self.graph.group_of(b)
+                    if ga is not None and gb is None: self.graph.add_to_group(ga, [b])
+                    elif gb is not None and ga is None: self.graph.add_to_group(gb, [a])
+                self.commit()
+            elif not hit and self.dropmenu and not any(isinstance(i, NodeItem) for i in self.items(ev.scenePos())): self.link_dropped.emit(nid, pid, d, ev.scenePos(), ev.screenPos())
             ev.accept(); return
         super().mouseReleaseEvent(ev)
+        if self._dragged: self._dragged = False; self._auto_group()
+
+    def group_under(self, nid):
+        """Groups (id list) whose frame contains the center of node nid, and that the node is not in yet."""
+        it = self.node_items.get(nid)
+        if not it: return []
+        ctr = it.pos() + QPointF(it.w / 2, it.h / 2); mine = self.graph.group_of(nid)
+        return [gid for gid, g in self.group_items.items() if gid != mine and g._r.contains(ctr)]
+
+    def _auto_group(self):
+        """Option: a node dropped inside a group frame joins that group (only nodes that are not in a group yet)."""
+        if not self.autogroup: return
+        ids, changed = self.selected_ids(), False
+        for nid in ids:
+            if self.graph.group_of(nid) is None:
+                gs = self.group_under(nid)
+                if gs: self.graph.add_to_group(gs[-1], [nid]); changed = True
+        if changed: self.commit(keep=ids)
 
     def mouseDoubleClickEvent(self, ev):
         if not [i for i in self.items(ev.scenePos()) if isinstance(i, (NodeItem, EdgeItem))]: self.empty_double.emit(ev.scenePos()); ev.accept(); return
         super().mouseDoubleClickEvent(ev)
 
     def contextMenuEvent(self, ev):
-        it = next((i for i in self.items(ev.scenePos()) if isinstance(i, (NodeItem, EdgeItem))), None)
+        it = next((i for i in self.items(ev.scenePos()) if isinstance(i, (NodeItem, EdgeItem, GroupItem, NoteItem))), None)
         if it is None: self.empty_menu.emit(ev.scenePos(), ev.screenPos()); ev.accept(); return
         m = QMenu()
         if isinstance(it, EdgeItem): m.addAction('Delete link', lambda: self.remove_edge(it.edge))
+        elif isinstance(it, GroupItem):
+            m.addAction('Edit group… (name, color, nodes)', lambda: self.group_edit.emit(it.gid)); cm = m.addMenu('Color')
+            for nm, c in COLOR_NAMES.items(): cm.addAction(swatch(c), nm, lambda _=False, c=c: self._color_group(it.gid, c))
+            m.addAction('Add the selected nodes to this group', lambda: self._add_sel(it.gid))
+            m.addAction('Select the nodes of this group', lambda: self._select_group(it.gid)); m.addSeparator(); m.addAction('Ungroup (keeps the nodes)', lambda: self._ungroup(it.gid))
+        elif isinstance(it, NoteItem):
+            m.addAction('Edit comment…', lambda: self.note_edit.emit(it.nid)); cm = m.addMenu('Color')
+            for nm, c in COLOR_NAMES.items(): cm.addAction(swatch(c), nm, lambda _=False, c=c: self._color_note(it.nid, c))
+            m.addSeparator(); m.addAction('Delete comment', lambda: self._del_note(it.nid))
         else:
             if not it.isSelected(): self.clearSelection(); it.setSelected(True)
             m.addAction('Edit…', lambda: self.node_activated.emit(it.node.id)); m.addAction('Duplicate\tCtrl+D', self.duplicate_selected)
+            m.addAction('Find in the graph…\tCtrl+F', lambda: self.find_request.emit(self.search_term(it.node)))
+            m.addAction('Group selected nodes\tCtrl+G', lambda: self.request.emit('group', 0))
+            for gid in self.group_under(it.node.id): m.addAction(swatch(self.graph.groups[gid].get('color', '#3a7bd5')), f'Put into the group "{self.graph.groups[gid].get("name", "Group")}"', lambda _=False, gid=gid: self._add_sel(gid))
+            if self.graph.groups:
+                am = m.addMenu('Add to group')
+                for gid, gv in self.graph.groups.items(): am.addAction(swatch(gv.get('color', '#3a7bd5')), gv.get('name', 'Group'), lambda _=False, gid=gid: self._add_sel(gid))
+            if self.graph.group_of(it.node.id): m.addAction('Remove from its group', lambda: self._leave_group(it.node.id))
             m.addAction('Disconnect all links', lambda: self.unlink(it.node.id)); m.addSeparator(); m.addAction('Delete\tDel', self.delete_selected)
         m.exec(ev.screenPos()); ev.accept()
+
+    def _add_sel(self, gid):
+        ids = self.selected_ids()
+        if ids: self.graph.add_to_group(gid, ids); self.commit(keep=ids)
+
+    def _color_group(self, gid, c): self.graph.groups[gid]['color'] = c; self.commit()
+    def _color_note(self, nid, c): self.graph.notes[nid]['color'] = c; self.commit()
+    def _ungroup(self, gid): self.graph.groups.pop(gid, None); self.commit()
+    def _del_note(self, nid): self.graph.notes.pop(nid, None); self.commit()
+
+    def _leave_group(self, nid):
+        for v in self.graph.groups.values(): v['nodes'] = [i for i in v['nodes'] if i != nid]
+        self.graph._gc(); self.commit(keep=[nid])
+
+    def _select_group(self, gid):
+        self.clearSelection()
+        for i in self.graph.groups.get(gid, {}).get('nodes', []):
+            if i in self.node_items: self.node_items[i].setSelected(True)
 
 
 class GraphView(QGraphicsView):
@@ -232,14 +438,16 @@ class GraphView(QGraphicsView):
         self.setViewportUpdateMode(QGraphicsView.FullViewportUpdate); self.setAcceptDrops(True); self._pan = None; self.centerOn(300, 100)
 
     def zoom_by(self, f):
-        s = self.transform().m11()
-        if 0.25 <= s * f <= 2.5: self.scale(f, f)
+        s = self.transform().m11(); ns = min(max(s * f, ZOOM_MIN), ZOOM_MAX)  # clamp instead of refusing: a far-away view can always be zoomed back
+        if abs(ns - s) > 1e-9: self.scale(ns / s, ns / s)
 
     def fit(self):
         r = self.scene().itemsBoundingRect()
         if r.isEmpty(): return
         self.fitInView(r.adjusted(-60, -60, 60, 60), Qt.KeepAspectRatio)
-        if self.transform().m11() > 1.2: self.setTransform(QTransform.fromScale(1.2, 1.2)); self.centerOn(r.center())
+        s = self.transform().m11()
+        if s > 1.2: self.setTransform(QTransform.fromScale(1.2, 1.2)); self.centerOn(r.center())
+        elif s < ZOOM_MIN: self.setTransform(QTransform.fromScale(ZOOM_MIN, ZOOM_MIN)); self.centerOn(r.center())
 
     def zoom_percent(self): return round(self.transform().m11() * 100)
     def wheelEvent(self, ev): self.zoom_by(1.12 ** (ev.angleDelta().y() / 120))
@@ -258,9 +466,11 @@ class GraphView(QGraphicsView):
         if self._pan is not None and ev.button() == Qt.MiddleButton: self._pan = None; self.unsetCursor(); return
         super().mouseReleaseEvent(ev)
 
+    show_grid = True
+
     def drawBackground(self, p, rect):
         p.fillRect(rect, QColor(C['bg']))
-        if self.transform().m11() < 0.5: return
+        if self.transform().m11() < 0.5 or not self.show_grid: return
         g = 24; p.setPen(QPen(QColor(C['ln']), 2.2 / self.transform().m11() ** 0.3)); x0, y0 = int(rect.left() // g) * g, int(rect.top() // g) * g
         p.drawPoints(QPolygonF([QPointF(x, y) for x in range(x0, int(rect.right()) + g, g) for y in range(y0, int(rect.bottom()) + g, g)]))
 
