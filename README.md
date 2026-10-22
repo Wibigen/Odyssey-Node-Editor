@@ -1,4 +1,4 @@
-# Odyssey Node Editor  (v4.2)
+# Odyssey Node Editor  (v4.6)
 
 A native desktop tool (Python + PySide6, no browser) for building **Super Mario Odyssey 1.0.0 exefs mods** with Blueprint-style nodes.
 It generates [exlaunch](https://github.com/shadowninja108/exlaunch) C++ that compiles against your OdysseyDecomp fork.

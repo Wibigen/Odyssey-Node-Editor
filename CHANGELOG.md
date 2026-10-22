@@ -1,6 +1,21 @@
 # Changelog
 Versioning: +1 for a big update, +0.1 for a small one.
 
+## v4.2.1
+- Right-click a call node > **Use as a value (hide execution pins)** (checkable): hides / shows its execution pins, e.g. to feed its result into a variable or another block.
+
+## v4.6
+- **Catalog: every entry of file_list.yml** when the Filter is empty (Settings; the default filter is unchanged). The reader is now a real list parser: labels given as a list of aliases (constructors C1/C2, 3929 entries), quoted labels, thunks, operators, templates, plain C names and entries without a label (named `sub_<offset>`, hooked / called by offset) are all kept. On the current OdysseyDecomp: 74171 entries, all present (it used to miss about 4000). Names that are not plain C++ identifiers are called by address automatically. Extract the catalog again to get it.
+
+## v4.5
+- **Constructors in the function browser**: extract the catalog again (Settings) and constructors such as `ChangeStageInfo(...)` are listed; choosing one adds a **Construct** block with the real argument types (option: `new`). Destructors stay hidden. Without re-extracting, use the *Construct (new / Type(...))* block from the palette and type the class name and the argument types.
+
+## v4.4
+- Fix: the right-click menu had two "Use as a value" entries and the option was greyed out for functions the catalog marks as void. One entry now; on a void function it sets the return type to "auto" so the result can be used.
+
+## v4.3
+- **Use as a value (no execution pins)** is now an option of the right-click menu of a call node (checkable; disabled when the call returns void). It is no longer a check box in the inspector.
+
 ## v4.2
 - **C++ import**: `x += y`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=` on variables, members (`pos.x -= 1`) and array elements (`counts[2] += 1`); `a[i]` and `a[i] = v`; arrays (`int t[4] = {...}`, global or local), `static` / `constexpr` qualifiers (no longer dropped on globals); template calls such as `al::getSceneObj<GameDataHolder>(scene)`.
 - **New blocks**: *Array element a[i]*, *Set array element*, and *Get scene object al::getSceneObj<T>* (template call: set the type in "Template arguments"; "Call by name" has the same field and `$T` in its return type stands for it). The math block also does `& | ^ << >>`.

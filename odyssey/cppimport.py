@@ -316,9 +316,9 @@ class Importer:
         self.scope, self.types, self.funcs, self.ids = {}, {}, {}, []
         self.byname, self.bymethod, self.bysuffix, self.hook_ret, self.hook_args = {}, {}, {}, 'void', []
         for e in graph.cat.values():
-            self.byname.setdefault(e['n'], []).append(e)
+            if e.get('k') != 'c': self.byname.setdefault(e['n'], []).append(e)
             if e.get('k') == 'm': self.bymethod.setdefault(e['n'].rsplit('::', 1)[-1], []).append(e)
-            else:
+            elif e.get('k') != 'c':
                 parts = e['n'].split('::')
                 for i in range(len(parts)): self.bysuffix.setdefault('::'.join(parts[i:]), []).append(e)  # 'isHidePane' and 'al::isHidePane' both find al::isHidePane
 

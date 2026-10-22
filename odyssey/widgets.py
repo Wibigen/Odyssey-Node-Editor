@@ -8,7 +8,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QFrame, QGroup
 
 from .shells import invocation
 from .theme import C
-from .graph import ADV_KEYS, COMMON_TYPES, E, GRP, NODE_FIELDS, PRE, QUALS, parse_params, split_top
+from .graph import ADV_KEYS, CALLS, COMMON_TYPES, E, GRP, NODE_FIELDS, PRE, QUALS, parse_params, split_top
 from .rettype import ask_ret_type, remember
 from .valueedit import make_editor
 
@@ -209,6 +209,7 @@ class Inspector(QScrollArea):
         adv = []
         for fd in NODE_FIELDS.get(n.type, []):
             if fd.key in ('save', 'inline') and n.type in ('callgame', 'callfn', 'callext') and self.graph.ret_type(n) == 'void': continue  # nothing to save / use as a value
+            if fd.key == 'inline' and n.type in CALLS: continue  # now a right-click option on the node
             if fd.key in ADV_KEYS and n.type in ('local', 'global'): adv.append(fd); continue
             self.set_form.addRow(fd.label, self._field(n, fd))
         if adv:  # qualifiers and arrays: a collapsed "Advanced" section (open by itself when the node already uses them)

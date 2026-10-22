@@ -95,6 +95,7 @@ class FunctionDialog(QDialog):
         self.args_hint = QLabel(); self.args_hint.setWordWrap(True); self.args_hint.setStyleSheet('color:#8a91a5'); cl.addWidget(self.args_hint)
         sc = QScrollArea(); sc.setWidgetResizable(True); sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff); self.args_w = QWidget(); self.args_l = QVBoxLayout(self.args_w); self.args_l.setContentsMargins(0, 0, 6, 0); self.args_l.addStretch(1); sc.setWidget(self.args_w); cl.addWidget(sc, 1)
         sv = QHBoxLayout(); self.save_l = QLabel('Save the result in a variable named'); self.save = QLineEdit(); self.save.setPlaceholderText('optional, e.g. pos'); sv.addWidget(self.save_l); sv.addWidget(self.save, 1); cl.addLayout(sv)
+        self.newobj = QCheckBox('Allocate it with new (gives a pointer)'); self.newobj.setVisible(False); cl.addWidget(self.newobj)
         self.inline = QCheckBox('Use the result as a value inside other blocks (no execution pin, runs where it is used)'); cl.addWidget(self.inline)
         hook = QWidget(); hl = QFormLayout(hook); self.mode = QComboBox()
         for k, lab in MODES: self.mode.addItem(lab, k)
@@ -151,7 +152,7 @@ class FunctionDialog(QDialog):
     def show_ret(self):
         c = self.cur; r = self.eff_ret()
         self.sig.setText(f"{r} {c['n']}({', '.join(c['p'])})"); self.i_ret.setText(f'<b>{escape(r)}</b>' + (f' <span style="color:#e6b673">(catalog: {escape(c["r"])})</span>' if r != c['r'] else ''))
-        self.save.setVisible(r != 'void'); self.save_l.setVisible(r != 'void'); self.inline.setVisible(r != 'void')
+        vis = r != 'void' and c.get('k') != 'c'; self.save.setVisible(vis); self.save_l.setVisible(vis); self.inline.setVisible(vis)
         if r == 'void': self.inline.setChecked(False)
 
     def change_ret(self):
@@ -166,6 +167,8 @@ class FunctionDialog(QDialog):
 
     def select(self, c, preset=None, rtype=''):
         self.cur = c; self.rtype = rtype; preset = preset or {}; self.err.setText(''); self.ok.setEnabled(True)
+        ctor = c.get('k') == 'c'; self.rCall.setText('Construct this object (Type(args))' if ctor else 'Call this function from my mod'); self.rHook.setEnabled(not ctor and not self.node); self.newobj.setVisible(ctor); self.save.setVisible(not ctor); self.save_l.setVisible(not ctor); self.inline.setVisible(not ctor)
+        if ctor and self.rHook.isChecked(): self.rCall.setChecked(True)
         self.name.setText(c['n']); self.i_off.setText(f"0x{c['o']:x}"); self.i_sym.setText(c['s']); self.i_sym.setCursorPosition(0)
         self.i_status.setText('Matching (decompiled)' if c['st'] == 'M' else 'Not matching / not decompiled yet')
         while len(self.rows): r = self.rows.pop(); r.setParent(None); r.deleteLater()
@@ -190,5 +193,6 @@ class FunctionDialog(QDialog):
     def result(self):
         """(node type, fields, fixed input values)"""
         s = self.cur['s']
+        if self.cur.get('k') == 'c': return 'construct', {'type': self.cur['c'], 'new': self.newobj.isChecked(), 'args': ', '.join(self.cur['p'])}, {f'm{i}': r.raw() for i, r in enumerate(self.rows) if r.raw()}
         if self.rHook.isChecked(): return 'hook', {'sym': s, 'mode': self.mode.currentData(), 'ret': self.ret.text().strip()}, {}
         return 'callgame', {'sym': s, 'save': self.save.text().strip(), 'rtype': self.rtype, 'inline': self.inline.isChecked()}, {f'a{i}': r.raw() for i, r in enumerate(self.rows) if r.raw()}

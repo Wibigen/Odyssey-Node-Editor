@@ -188,7 +188,8 @@ class Graph:
         self.cat, self._qm = {}, None
         for e in entries:
             c = dict(e); cls = c.get('c', ''); k = c.get('k') or ''
-            if not cls: k = 'f'  # free function (namespace)
+            if k == 'c': pass  # constructor
+            elif not cls: k = 'f'  # free function (namespace)
             else:
                 k = k or ('s' if STATIC_CLASS.search(cls) else 'm')  # static or member function of a class
                 if k == 's' and c.get('p') and c['p'][0] == cls + '*': c['p'] = c['p'][1:]  # the catalog adds a 'this' parameter to every class function
@@ -499,7 +500,7 @@ class Graph:
         f, T = n.f, n.type
         if T == 'callgame':
             c = self.sg(n); args = [self.arg(n, f'a{i}') for i in range(len(c['p']))]; a = ', '.join(args); via = f.get('via') or self.calls
-            if via == 'direct' and c is not UNKNOWN and c.get('n', '?') != '?':  # the plain call: the decomp headers declare the function, the base links the symbol
+            if via == 'direct' and c is not UNKNOWN and re.fullmatch(r'[A-Za-z_]\w*(::[A-Za-z_]\w*)*', c.get('n', '?')) and c.get('k') != 'c':  # only plain C++ names can be called directly (not thunks, operators, sub_XXXX)  # the plain call: the decomp headers declare the function, the base links the symbol
                 if c.get('k') == 'm' and args:
                     obj = args[0] if re.fullmatch(r'\w+', args[0]) else f'({args[0]})'; return f"{obj}->{c['n'].rsplit('::', 1)[-1]}({', '.join(args[1:])})"
                 return f"{c['n']}({a})"
@@ -600,7 +601,7 @@ class Graph:
             if m == 'after': o += f"    {'return ' if v else ''}Orig({a});\n"
             if m == 'replace' and v: o += '    return {};\n'
             o += '  }\n};\n'
-        installs = ''.join(f"  Hook{n.id}::InstallAtSymbol(\"{n.f.get('sym', '')}\");\n" if self.install == 'symbol' and n.f.get('sym') else f"  Hook{n.id}::InstallAtOffset(0x{self.sg(n)['o']:x});\n" for n in hs)
+        installs = ''.join(f"  Hook{n.id}::InstallAtSymbol(\"{n.f.get('sym', '')}\");\n" if self.install == 'symbol' and n.f.get('sym') and not str(n.f['sym']).startswith('sub_') else f"  Hook{n.id}::InstallAtOffset(0x{self.sg(n)['o']:x});\n" for n in hs)
         return o + f'\nextern "C" void exl_main(void*, void*) {{\n  exl::hook::Initialize();\n{installs}}}\n\nextern "C" NORETURN void exl_exception_entry() {{ EXL_ABORT(\"Unhandled exception\"); }}\n'
 
     def gen_map(self):

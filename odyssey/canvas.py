@@ -398,6 +398,11 @@ class GraphScene(QGraphicsScene):
         else:
             if not it.isSelected(): self.clearSelection(); it.setSelected(True)
             m.addAction('Edit…', lambda: self.node_activated.emit(it.node.id)); m.addAction('Duplicate\tCtrl+D', self.duplicate_selected)
+            if it.node.type in CALLS:  # hide / show the execution pins: the call then runs where its result is used
+                inl = bool(it.node.f.get('inline')); ac = m.addAction('Use as a value (hide execution pins)'); ac.setCheckable(True); ac.setChecked(inl)
+                if not inl and self.graph.ret_type(it.node) == 'void' and it.node.type in ('callfn', 'callorig'): ac.setEnabled(False); ac.setToolTip('This call returns void, so it has no value to use')
+                elif not inl and self.graph.ret_type(it.node) == 'void': ac.setToolTip('The catalog says void: the return type becomes "auto" (change it in the inspector if you know it)')
+                ac.triggered.connect(lambda _=False, n=it.node: self._toggle_inline(n))
             m.addAction('Find in the graph…\tCtrl+F', lambda: self.find_request.emit(self.search_term(it.node)))
             m.addAction('Group selected nodes\tCtrl+G', lambda: self.request.emit('group', 0))
             for gid in self.group_under(it.node.id): m.addAction(swatch(self.graph.groups[gid].get('color', '#3a7bd5')), f'Put into the group "{self.graph.groups[gid].get("name", "Group")}"', lambda _=False, gid=gid: self._add_sel(gid))
@@ -407,6 +412,15 @@ class GraphScene(QGraphicsScene):
             if self.graph.group_of(it.node.id): m.addAction('Remove from its group', lambda: self._leave_group(it.node.id))
             m.addAction('Disconnect all links', lambda: self.unlink(it.node.id)); m.addSeparator(); m.addAction('Delete\tDel', self.delete_selected)
         m.exec(ev.screenPos()); ev.accept()
+
+    def _toggle_inline(self, n):
+        n.f['inline'] = not n.f.get('inline')
+        if n.f['inline']:
+            n.f['save'] = ''
+            if self.graph.ret_type(n) == 'void':  # the catalog guesses void for many functions that do return something: use the result anyway
+                if n.type == 'callgame': n.f['rtype'] = 'auto'
+                elif n.type in ('callmethod', 'callext'): n.f['ret'] = 'auto'
+        self.commit(keep=[n.id])
 
     def _add_sel(self, gid):
         ids = self.selected_ids()
