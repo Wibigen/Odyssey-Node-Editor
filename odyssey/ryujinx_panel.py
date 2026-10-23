@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFileDialog
 
 from . import ryujinx as R
 from .config import save_config
+from .icons import bind
 
 OK, KO = '#4ecb8a', '#ef5b5b'
 
@@ -54,8 +55,8 @@ class RyujinxDialog(QDialog):
 
     def refresh(self):
         d = self.data.text().strip(); ok = R.looks_like_data(R.norm(d)) if d else False
-        if ok: self.dstat.setText('✔ Ryujinx data folder found'); self.dstat.setStyleSheet(f'color:{OK}')
-        elif d: self.dstat.setText('✘ This folder does not look like Ryujinx data (no mods / Config.json inside)'); self.dstat.setStyleSheet(f'color:{KO}')
+        if ok: self.dstat.setText('Ryujinx data folder found'); self.dstat.setStyleSheet(f'color:{OK}')
+        elif d: self.dstat.setText('This folder does not look like Ryujinx data (no mods / Config.json inside)'); self.dstat.setStyleSheet(f'color:{KO}')
         else: self.dstat.setText('Not detected: enter it (Ryujinx: File > Open Ryujinx Folder shows where it is)'); self.dstat.setStyleSheet(f'color:{KO}')
         m = self.mod.text().strip()
         self.dest.setText(f'Files will go to: {Path(R.norm(d)) / "mods" / "contents" / R.TITLE_ID / m / "exefs"}' if d and m else '')
@@ -70,7 +71,7 @@ class RyujinxPanel(QWidget):
     def __init__(self, win):
         super().__init__(); self.win = win; self.proc = None; v = QVBoxLayout(self); v.setContentsMargins(10, 8, 10, 8)
         row = QHBoxLayout(); v.addLayout(row)
-        self.bGo = QPushButton('▶ Install mod and launch Ryujinx'); self.bGo.setObjectName('pri'); self.bInst, self.bRun, self.bOpen, self.bCfg = QPushButton('Install mod only'), QPushButton('Launch only'), QPushButton('Open mod folder'), QPushButton('Settings…')
+        self.bGo = QPushButton(' Install mod and launch Ryujinx'); bind(self.bGo, 'play_fill', '#ffffff', 16); self.bGo.setObjectName('pri'); self.bInst, self.bRun, self.bOpen, self.bCfg = QPushButton('Install mod only'), QPushButton('Launch only'), QPushButton('Open mod folder'), QPushButton('Settings…')
         self.bBack = QPushButton('Re-enable other mods'); self.bBack.setToolTip("Put Ryujinx's mods.json back as it was before the first launch from here")
         for b in (self.bGo, self.bInst, self.bRun, self.bOpen, self.bBack): row.addWidget(b)
         row.addStretch(1); row.addWidget(self.bCfg)
@@ -86,7 +87,7 @@ class RyujinxPanel(QWidget):
 
     def refresh(self):
         p = R.problems(self.cfg)
-        if p: self.status.setText('⚠ To set up: ' + ' · '.join(p) + '.  Click "Settings…".'); self.status.setStyleSheet(f'color:{KO}')
+        if p: self.status.setText('To set up: ' + ' · '.join(p) + '.  Click "Settings…".'); self.status.setStyleSheet(f'color:{KO}')
         else:
             b = R.build_dir(self.cfg); n = len(R.find_files(b, self.cfg.get('ryu_files'))) if b else 0
             self.status.setText(f'Ready. Mod: {R.mod_dir(self.cfg) / "exefs"}   ·   {n} compiled file(s) in {b}' if n else f'Ready, but no compiled file in {b} yet: compile first.'); self.status.setStyleSheet(f'color:{OK if n else "#c98a2b"}')
@@ -110,27 +111,27 @@ class RyujinxPanel(QWidget):
     def do_install(self):
         if not self.need(True, False): return False
         try: dest, names = R.install(self.cfg)
-        except RuntimeError as e: self.say('✘ ' + str(e)); self.refresh(); return False
-        self.say(f'✔ Mod folder emptied, then copied {", ".join(names)} to {dest}'); self.refresh(); return True
+        except RuntimeError as e: self.say('' + str(e)); self.refresh(); return False
+        self.say(f'Mod folder emptied, then copied {", ".join(names)} to {dest}'); self.refresh(); return True
 
     def do_launch(self):
         if not self.need(False, True): return False
         if self.cfg.get('ryu_disable_others', True):
             try:
-                off = R.disable_others(self.cfg); self.say(f'✔ Other mods turned off: {", ".join(off)}' if off else '✔ No other active mod.')
-            except RuntimeError as e: self.say('⚠ ' + str(e) + '\n  The game is started anyway.')
+                off = R.disable_others(self.cfg); self.say(f'Other mods turned off: {", ".join(off)}' if off else 'No other active mod.')
+            except RuntimeError as e: self.say('' + str(e) + '\n  The game is started anyway.')
         try: a, p, log = R.launch(self.cfg)
-        except RuntimeError as e: self.say('✘ ' + str(e)); return False
+        except RuntimeError as e: self.say('' + str(e)); return False
         self.say('Starting: ' + ' '.join(f'"{x}"' if ' ' in x else x for x in a)); self.proc = (p, log)
         QTimer.singleShot(3000, self.check_launch); return True
 
     def check_launch(self):
         """Three seconds later: is Ryujinx still there? (the old 'ok' only meant that the process had been created)"""
         p, log = self.proc; code = p.poll()
-        if code is None: self.say(f'✔ Ryujinx is running (pid {p.pid}).'); return
+        if code is None: self.say(f'Ryujinx is running (pid {p.pid}).'); return
         try: tail = '\n'.join(Path(log).read_text('utf-8', 'replace').strip().splitlines()[-15:])
         except OSError: tail = ''
-        self.say(f'✘ Ryujinx closed right after starting (exit code {code}).' + (f'\n{tail}' if tail else '') + f'\nFull output: {log}\nTry the same command by hand in a terminal; check the game file path and the extra options.')
+        self.say(f'Ryujinx closed right after starting (exit code {code}).' + (f'\n{tail}' if tail else '') + f'\nFull output: {log}\nTry the same command by hand in a terminal; check the game file path and the extra options.')
 
     def go(self):
         if not self.need(True, True): return
@@ -141,8 +142,8 @@ class RyujinxPanel(QWidget):
 
     def reenable(self):
         if not self.cfg.get('ryu_data'): self.say('Set the Ryujinx data folder first.'); return
-        try: self.say('✔ Other mods are back as they were.' if R.restore_others(self.cfg) else 'Nothing to restore (no backup of mods.json).')
-        except RuntimeError as e: self.say('✘ ' + str(e))
+        try: self.say('Other mods are back as they were.' if R.restore_others(self.cfg) else 'Nothing to restore (no backup of mods.json).')
+        except RuntimeError as e: self.say('' + str(e))
 
     def open_mods(self):
         d = R.mod_dir(self.cfg) if self.cfg.get('ryu_data') and self.cfg.get('ryu_mod', '').strip() else None

@@ -5,7 +5,35 @@ from PySide6.QtWidgets import QApplication
 
 from .config import resource
 
-C = dict(bg='#14161c', bg2='#1a1d25', pn='#20242e', node='#232834', ln='#2f3441', grid='#242834', tx='#e9ebf1', mu='#8a91a5', ac='#e8484f', ok='#4ecb8a', ko='#ef5b5b')
+PALETTES = {
+    'dark': dict(bg='#14161c', bg2='#1a1d25', pn='#20242e', node='#232834', ln='#2f3441', grid='#242834', tx='#e9ebf1', mu='#8a91a5', ok='#4ecb8a', ko='#ef5b5b', val='#7fd6c2', warn='#ffd166', sub='#b9c0d4', bar='#1d2230',
+                 code_num='#6dd26d', code_kw='#6aa7ff', code_pp='#c792ea', code_str='#e6b673', code_cm='#7f8aa3'),
+    'light': dict(bg='#f2f3f7', bg2='#ffffff', pn='#e7e9f0', node='#ffffff', ln='#c9cdd9', grid='#d6d9e3', tx='#1b2030', mu='#5f677c', ok='#1f9d62', ko='#d63c3c', val='#0d8a76', warn='#8a5d00', sub='#586078', bar='#ffffff',
+                  code_num='#1d8a3a', code_kw='#1f5fd0', code_pp='#8a3fc4', code_str='#b25e00', code_cm='#7b8499'),
+}
+ACCENTS = {'Red': '#e8484f', 'Orange': '#e8863a', 'Amber': '#d99a00', 'Green': '#2fa66a', 'Teal': '#14a3a3', 'Blue': '#3a7bd5', 'Purple': '#9a66e8', 'Pink': '#e0559c'}
+C = dict(PALETTES['dark'], ac=ACCENTS['Red'], mode='dark')
+PLUGIN_THEMES = {}  # 'plugin.theme' -> dict(name, base, colors, accent, plugin): themes added by plugins
+
+
+def register_theme(key, name, base='dark', colors=None, accent='', plugin=''):
+    """Add a theme. colors only needs the entries to change (keys of PALETTES['dark']); the rest comes from the base palette."""
+    PLUGIN_THEMES[key] = dict(name=name, base=base if base in PALETTES else 'dark', colors={k: v for k, v in (colors or {}).items() if k in PALETTES['dark'] and re.fullmatch(r'#[0-9a-fA-F]{6}', str(v))},
+                              accent=accent if re.fullmatch(r'#[0-9a-fA-F]{6}', str(accent or '')) else '', plugin=plugin)
+
+
+def theme_choices():
+    """[(key, label, base)] : the two built-in themes, then the ones from plugins."""
+    return [('dark', 'Dark', 'dark'), ('light', 'Light', 'light')] + [(k, t['name'], t['base']) for k, t in PLUGIN_THEMES.items()]
+
+
+def set_theme(mode='dark', accent='Red'):
+    """Switch the shared color table in place (every module reads C when it paints). Call apply_theme afterwards for the Qt widgets."""
+    t = PLUGIN_THEMES.get(mode); base = t['base'] if t else (mode if mode in PALETTES else 'dark')
+    C.update(PALETTES[base]); C['mode'] = base
+    if t: C.update(t['colors'])
+    C['ac'] = ACCENTS.get(accent) or (accent if str(accent).startswith('#') else '') or (t['accent'] if t else '') or ACCENTS['Red']
+    if accent == 'Theme': C['ac'] = (t['accent'] if t and t['accent'] else ACCENTS['Red'])
 GREEN, ORANGE, TEAL, BLUE, PURPLE = '#4f9a4f', '#c46a2d', '#14a3a3', '#3a7bd5', '#9a66e8'
 HEAD_COLORS = dict(hook='#e8484f', callorig='#e8484f', callmethod='#2fa66a', callext='#2fa66a', func=PURPLE, callfn=PURPLE, callgame='#2fa66a', if_=BLUE, switch=BLUE, **{'for': BLUE, 'while': BLUE, 'ret': BLUE, 'if': BLUE},
                    local=TEAL, setvar=TEAL, getvar=TEAL, literal='#7a7f90', op=GREEN, cmp=GREEN, logic=GREEN, **{'not': GREEN, 'global': TEAL},
@@ -24,8 +52,8 @@ def pin_color(t):
 QSS = '''
 QMainWindow,QDialog,QWidget{background:@bg;color:@tx;font-size:@fs}
 QDockWidget{titlebar-close-icon:none;font-weight:600}QDockWidget::title{background:@pn;padding:6px 10px;border-bottom:1px solid @ln}
-QToolBar{background:@pn;border:0;border-bottom:1px solid @ln;spacing:4px;padding:4px}
-QToolButton{background:transparent;border:1px solid transparent;border-radius:7px;padding:5px 9px}QToolButton:hover{border-color:@ac}
+QToolBar{background:@pn;border:0;border-bottom:1px solid @ln;spacing:6px;padding:4px 8px}#gbar{background:@pn;border:0;border-bottom:1px solid @ln}#gbar QWidget{background:transparent}#gsep{color:@ln;background:@ln;max-width:1px}QStatusBar QLabel,QStatusBar QPushButton,QStatusBar QWidget{background:transparent}
+QToolButton{background:transparent;border:1px solid transparent;border-radius:7px;padding:6px 9px}QToolButton:hover{border-color:@ac;background:@bg2}
 QMenuBar{background:@pn}QMenuBar::item:selected,QMenu::item:selected{background:@ac;color:white}QMenu{background:@pn;border:1px solid @ln}
 QPushButton{background:@bg2;border:1px solid @ln;border-radius:8px;padding:6px 12px}QPushButton:hover{border-color:@ac}
 QPushButton#pri{background:@ac;border-color:@ac;color:white;font-weight:600}QPushButton:disabled{color:@mu}
@@ -55,5 +83,11 @@ def apply_theme(app: QApplication, ui_px=13):
                       (QPalette.ColorRole.WindowText, 'tx'), (QPalette.ColorRole.ButtonText, 'tx'), (QPalette.ColorRole.Highlight, 'ac'), (QPalette.ColorRole.ToolTipBase, 'pn'), (QPalette.ColorRole.ToolTipText, 'tx')):
         p.setColor(role, QColor(C[key]))
     app.setPalette(p)
-    C['arrow'] = resource('assets/arrow_down.png').as_posix(); C['fs'] = f'{int(ui_px)}px'
+    try:  # the combo-box arrow follows the theme text color
+        import tempfile; from pathlib import Path; from .icons import svg_pixmap
+        f = Path(tempfile.gettempdir()) / f"odn_arrow_{C['tx'].lstrip('#')}.png"
+        if not f.exists(): svg_pixmap('down', C['tx'], 12, 2.0).save(str(f))
+        C['arrow'] = f.as_posix()
+    except Exception: C['arrow'] = resource('assets/arrow_down.png').as_posix()
+    C['fs'] = f'{int(ui_px)}px'
     app.setStyleSheet(re.sub(r'@(\w+)', lambda m: C[m[1]], QSS))

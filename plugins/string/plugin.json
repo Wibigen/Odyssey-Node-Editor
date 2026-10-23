@@ -1,0 +1,504 @@
+{
+  "id": "string",
+  "title": "Strings",
+  "author": "WibiDev",
+  "version": "1.0.0",
+  "icon": "icon.png",
+  "description": "C string helpers from <cstring>, <cstdlib> and <cctype>: length, compare, search, copy, conversions and character tests.",
+  "nodes": [
+    {
+      "id": "strlen",
+      "label": "Length (strlen)",
+      "description": "Number of characters before the final zero.",
+      "template": "strlen($text)",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        }
+      ],
+      "output": {
+        "type": "size_t",
+        "label": "length"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "equals",
+      "label": "Text equals",
+      "description": "True when both texts are identical.",
+      "template": "(strcmp($a, $b) == 0)",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "const char*",
+          "label": "A",
+          "default": "\"\""
+        },
+        {
+          "id": "b",
+          "type": "const char*",
+          "label": "B",
+          "default": "\"\""
+        }
+      ],
+      "output": {
+        "type": "bool",
+        "label": "equal"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "compare",
+      "label": "Compare texts (strcmp)",
+      "description": "0 when equal, negative when A comes first, positive when B comes first.",
+      "template": "strcmp($a, $b)",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "const char*",
+          "label": "A",
+          "default": "\"\""
+        },
+        {
+          "id": "b",
+          "type": "const char*",
+          "label": "B",
+          "default": "\"\""
+        }
+      ],
+      "output": {
+        "type": "int",
+        "label": "order"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "starts",
+      "label": "Starts with",
+      "description": "True when the text begins with the prefix.",
+      "template": "(strncmp($text, $prefix, strlen($prefix)) == 0)",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        },
+        {
+          "id": "prefix",
+          "type": "const char*",
+          "label": "prefix",
+          "default": "\"\""
+        }
+      ],
+      "output": {
+        "type": "bool",
+        "label": "starts"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "contains",
+      "label": "Contains",
+      "description": "True when the part appears somewhere in the text.",
+      "template": "(strstr($text, $part) != nullptr)",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        },
+        {
+          "id": "part",
+          "type": "const char*",
+          "label": "part",
+          "default": "\"\""
+        }
+      ],
+      "output": {
+        "type": "bool",
+        "label": "found"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "find",
+      "label": "Find text (strstr)",
+      "description": "Pointer to the first place where the part appears, or null.",
+      "template": "strstr($text, $part)",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        },
+        {
+          "id": "part",
+          "type": "const char*",
+          "label": "part",
+          "default": "\"\""
+        }
+      ],
+      "output": {
+        "type": "const char*",
+        "label": "position"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "findchar",
+      "label": "Find character (strchr)",
+      "description": "Pointer to the first occurrence of a character, or null.",
+      "template": "strchr($text, $char)",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        },
+        {
+          "id": "char",
+          "type": "int",
+          "label": "character",
+          "default": "'a'"
+        }
+      ],
+      "output": {
+        "type": "const char*",
+        "label": "position"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "charat",
+      "label": "Character at",
+      "description": "The character at a position (0 = first).",
+      "template": "(($text)[$index])",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        },
+        {
+          "id": "index",
+          "type": "int",
+          "label": "index",
+          "default": "0"
+        }
+      ],
+      "output": {
+        "type": "char",
+        "label": "character"
+      }
+    },
+    {
+      "id": "is_empty",
+      "label": "Is empty",
+      "description": "True when the text has no character.",
+      "template": "(($text)[0] == '\\0')",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        }
+      ],
+      "output": {
+        "type": "bool",
+        "label": "empty"
+      }
+    },
+    {
+      "id": "copy",
+      "label": "Copy text (strncpy)",
+      "description": "Copy a text into a buffer (at most size-1 characters, always ends with a zero).",
+      "template": "strncpy($dest, $src, ($size) - 1); ($dest)[($size) - 1] = '\\0'",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "dest",
+          "type": "char*",
+          "label": "destination"
+        },
+        {
+          "id": "src",
+          "type": "const char*",
+          "label": "source",
+          "default": "\"\""
+        },
+        {
+          "id": "size",
+          "type": "u64",
+          "label": "buffer size",
+          "default": "256"
+        }
+      ],
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "append",
+      "label": "Append text (strncat)",
+      "description": "Add a text at the end of a buffer (at most \"count\" characters).",
+      "template": "strncat($dest, $src, $count)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "dest",
+          "type": "char*",
+          "label": "destination"
+        },
+        {
+          "id": "src",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        },
+        {
+          "id": "count",
+          "type": "u64",
+          "label": "count",
+          "default": "64"
+        }
+      ],
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "to_int",
+      "label": "Text to integer (atoi)",
+      "description": "Convert \"123\" to the number 123.",
+      "template": "atoi($text)",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"0\""
+        }
+      ],
+      "output": {
+        "type": "int",
+        "label": "number"
+      },
+      "includes": [
+        "<cstdlib>"
+      ]
+    },
+    {
+      "id": "to_float",
+      "label": "Text to float (atof)",
+      "description": "Convert \"1.5\" to the number 1.5.",
+      "template": "static_cast<float>(atof($text))",
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"0\""
+        }
+      ],
+      "output": {
+        "type": "float",
+        "label": "number"
+      },
+      "includes": [
+        "<cstdlib>"
+      ]
+    },
+    {
+      "id": "is_digit",
+      "label": "Is a digit",
+      "description": "True for 0-9.",
+      "template": "(isdigit($char) != 0)",
+      "inputs": [
+        {
+          "id": "char",
+          "type": "int",
+          "label": "character",
+          "default": "'0'"
+        }
+      ],
+      "output": {
+        "type": "bool",
+        "label": "digit"
+      },
+      "includes": [
+        "<cctype>"
+      ]
+    },
+    {
+      "id": "is_alpha",
+      "label": "Is a letter",
+      "description": "True for A-Z and a-z.",
+      "template": "(isalpha($char) != 0)",
+      "inputs": [
+        {
+          "id": "char",
+          "type": "int",
+          "label": "character",
+          "default": "'a'"
+        }
+      ],
+      "output": {
+        "type": "bool",
+        "label": "letter"
+      },
+      "includes": [
+        "<cctype>"
+      ]
+    },
+    {
+      "id": "to_upper",
+      "label": "To upper case",
+      "description": "Convert a character to capital.",
+      "template": "toupper($char)",
+      "inputs": [
+        {
+          "id": "char",
+          "type": "int",
+          "label": "character",
+          "default": "'a'"
+        }
+      ],
+      "output": {
+        "type": "int",
+        "label": "character"
+      },
+      "includes": [
+        "<cctype>"
+      ]
+    },
+    {
+      "id": "to_lower",
+      "label": "To lower case",
+      "description": "Convert a character to small letter.",
+      "template": "tolower($char)",
+      "inputs": [
+        {
+          "id": "char",
+          "type": "int",
+          "label": "character",
+          "default": "'A'"
+        }
+      ],
+      "output": {
+        "type": "int",
+        "label": "character"
+      },
+      "includes": [
+        "<cctype>"
+      ]
+    },
+    {
+      "id": "memset",
+      "label": "Fill memory (memset)",
+      "description": "Set every byte of a memory block to a value.",
+      "template": "memset($dest, $value, $size)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "dest",
+          "type": "void*",
+          "label": "memory"
+        },
+        {
+          "id": "value",
+          "type": "int",
+          "label": "byte",
+          "default": "0"
+        },
+        {
+          "id": "size",
+          "type": "u64",
+          "label": "size"
+        }
+      ],
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "memcpy",
+      "label": "Copy memory (memcpy)",
+      "description": "Copy bytes from one memory block to another (they must not overlap).",
+      "template": "memcpy($dest, $src, $size)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "dest",
+          "type": "void*",
+          "label": "destination"
+        },
+        {
+          "id": "src",
+          "type": "const void*",
+          "label": "source"
+        },
+        {
+          "id": "size",
+          "type": "u64",
+          "label": "size"
+        }
+      ],
+      "includes": [
+        "<cstring>"
+      ]
+    },
+    {
+      "id": "memcmp",
+      "label": "Compare memory (memcmp)",
+      "description": "0 when both blocks are identical.",
+      "template": "memcmp($a, $b, $size)",
+      "inputs": [
+        {
+          "id": "a",
+          "type": "const void*",
+          "label": "A"
+        },
+        {
+          "id": "b",
+          "type": "const void*",
+          "label": "B"
+        },
+        {
+          "id": "size",
+          "type": "u64",
+          "label": "size"
+        }
+      ],
+      "output": {
+        "type": "int",
+        "label": "order"
+      },
+      "includes": [
+        "<cstring>"
+      ]
+    }
+  ]
+}

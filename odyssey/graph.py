@@ -2,6 +2,8 @@
 import json, re
 from collections import namedtuple
 
+from . import plugnodes as PN
+
 E = 'E'  # type of execution pins
 Pin = namedtuple('Pin', 'id type label')
 Field = namedtuple('Field', 'key label kind opts hint')  # kind: text | type | choice | bool | var | func
@@ -74,6 +76,25 @@ PRE = {
 }
 CATEGORIES = ['Flow', 'Variables', 'Functions', 'Math & logic', 'Pointers & memory', 'Custom code']
 GRP = {c: [k for k, v in PRE.items() if v[2] == c] for c in CATEGORIES}
+BUILTIN_PRE, BUILTIN_CATS = dict(PRE), list(CATEGORIES)
+
+
+def rebuild_palette():
+    """Palette entries = built-in blocks + the nodes of the loaded plugins (PRE, CATEGORIES and GRP are updated in place)."""
+    PRE.clear(); PRE.update(BUILTIN_PRE); CATEGORIES[:] = BUILTIN_CATS
+    for d in sorted(PN.PLUG.values(), key=lambda d: (d['category'].lower(), d['label'].lower())):
+        label = d['label'] if d['label'] not in PRE else f"{d['label']} ({d['plugin_title']})"
+        PRE[label] = ('plug', PN.defaults(d), d['category'], d['description'])
+        if d['category'] not in CATEGORIES: CATEGORIES.insert(len(CATEGORIES) - 1, d['category'])
+    GRP.clear(); GRP.update({c: [k for k, v in PRE.items() if v[2] == c] for c in CATEGORIES})
+
+
+def register_plugin_node(d):
+    PN.PLUG[d['pid']] = d
+
+
+def clear_plugin_nodes():
+    PN.EMBED.update(PN.PLUG); PN.PLUG.clear()  # nodes already in a graph keep their definition
 KIND_LABEL = dict(hook='Hook: your graph runs when the game calls this function', callgame='Game function call', func='Your function (definition)', callfn='Call of your function', callmethod='Method call', callext='Function call', construct='Object',
                   **{k: 'Flow control' for k in ('if', 'switch', 'for', 'while', 'ret')}, local='Variable', setvar='Variable', getvar='Variable', **{'global': 'Variable'}, literal='Constant',
                   op='Math', cmp='Comparison', logic='Logic', **{'not': 'Logic'}, addr='Pointer', deref='Pointer', isnull='Pointer', cast='Conversion', member='Memory', setmember='Memory',
@@ -168,6 +189,13 @@ def parse_params(s):
 
 def placeholders(tpl):
     return sorted({m[1] for m in re.finditer(r'\$([a-h])', tpl or '')})
+
+
+def fields_for(n):
+    """Inspector fields of a node (plugin nodes bring their own)."""
+    if n.type != 'plug': return NODE_FIELDS.get(n.type, [])
+    d = PN.plug_def(n.f.get('pid'))
+    return [Field(f['key'], f['label'], f['kind'], f['options'], f['hint']) for f in d['fields']] if d else []
 
 
 def argname(c, i):
@@ -272,17 +300,20 @@ class Graph:
     def to_json(self):
         return json.dumps({'N': {str(i): dict(id=n.id, type=n.type, f=n.f, d=n.d, x=n.x, y=n.y) for i, n in self.nodes.items()},
                            'EG': [[list(e[0]), list(e[1])] for e in self.edges], 'NID': self.nid, 'inc': self.inc,
-                           'GR': {str(k): v for k, v in self.groups.items()}, 'NT': {str(k): v for k, v in self.notes.items()}, 'GID': self.gid})
+                           'GR': {str(k): v for k, v in self.groups.items()}, 'NT': {str(k): v for k, v in self.notes.items()}, 'GID': self.gid,
+                           'PD': {p: PN.plug_def(p) for p in sorted({n.f.get('pid') for n in self.nodes.values() if n.type == 'plug'}) if PN.plug_def(p)}})
 
     def load_json(self, s):
         j = json.loads(s) if isinstance(s, str) else s
         self.nodes = {int(k): Node(int(v['id']), v['type'], v['f'], v.get('x', 0), v.get('y', 0), v.get('d')) for k, v in j['N'].items()}
         self.edges = [((e['f'][0], e['f'][1]), (e['t'][0], e['t'][1])) if isinstance(e, dict) else ((e[0][0], e[0][1]), (e[1][0], e[1][1])) for e in j['EG']]
+        for p, d in (j.get('PD') or {}).items():  # definitions saved with the graph: used when the plugin is not installed
+            if p not in PN.PLUG and isinstance(d, dict) and 'template' in d and 'fields' in d: PN.EMBED[p] = d
         self.nid = j['NID']; self.inc = j.get('inc') or self.inc
         self.groups = {int(k): dict(v, nodes=[i for i in v.get('nodes', []) if i in self.nodes]) for k, v in (j.get('GR') or {}).items()}; self._gc()
         self.notes = {int(k): v for k, v in (j.get('NT') or {}).items()}; self.gid = max([j.get('GID', 1)] + [k + 1 for k in list(self.groups) + list(self.notes)])
         for n in self.nodes.values():  # fields added since older versions
-            for f in NODE_FIELDS.get(n.type, []): n.f.setdefault(f.key, False if f.kind == 'bool' else '')
+            for f in fields_for(n): n.f.setdefault(f.key, False if f.kind == 'bool' else '')
 
     # ---------------- lookups ----------------
     def sg(self, n):
@@ -313,7 +344,7 @@ class Graph:
         out = set()
         for n in self.nodes.values():
             if n.type in ('local', 'global') and n.f.get('name'): out.add(n.f['name'])
-            if n.type in CALLS and n.f.get('save'): out.add(n.f['save'])
+            if (n.type in CALLS or n.type == 'plug') and n.f.get('save'): out.add(n.f['save'])
             if n.type == 'func': out |= {k for k, _ in parse_params(n.f.get('params'))}
         return sorted(out)
 
@@ -325,6 +356,7 @@ class Graph:
         if T == 'callmethod': return self.q(f.get('ret') or 'void')
         if T == 'callext': return self.q((f.get('ret') or 'void').replace('$T', split_top(f.get('targs'))[0] if split_top(f.get('targs')) else 'auto'))
         if T == 'callorig': h = self.hook_of(n.id); return (h.f.get('ret') or self.sg(h)['r']) if h else 'void'
+        if T == 'plug': d = PN.plug_def(f.get('pid')); return (d['output']['type'] or 'auto') if d and d['output'] else 'void'
         return 'void'
 
     def var_type(self, name):
@@ -333,10 +365,12 @@ class Graph:
             if n.type == 'func':
                 for k, t in parse_params(n.f.get('params')):
                     if k == name: return t
-            if n.type in CALLS and n.f.get('save') == name: return self.ret_type(n)
+            if (n.type in CALLS or n.type == 'plug') and n.f.get('save') == name: return self.ret_type(n)
         return ''
 
     def category(self, n):
+        if n.type == 'plug':
+            d = PN.plug_def(n.f.get('pid')); return d['category'] if d else 'Plugin node'
         return KIND_LABEL.get(n.type, '')
 
     # ---------------- node description ----------------
@@ -353,7 +387,10 @@ class Graph:
                 'isnull': lambda: 'Is NOT null?' if f.get('negate') else 'Is null?', 'cast': lambda: f"Cast to {f.get('to', '')}", 'index': lambda: 'Array element [ ]', 'setindex': lambda: 'Set array element [ ]',
                 'member': lambda: f"Get member {f.get('arrow', '->')}{f.get('member', '')}", 'setmember': lambda: f"Set member {f.get('arrow', '->')}{f.get('member', '')}",
                 'readoff': lambda: f"Read {f.get('type', '')} at +{f.get('offset', '0')}", 'writeoff': lambda: f"Write {f.get('type', '')} at +{f.get('offset', '0')}",
-                'expr': lambda: 'Custom expression', 'stmt': lambda: 'Custom statement'}.get(T, lambda: T)()
+                'expr': lambda: 'Custom expression', 'stmt': lambda: 'Custom statement', 'plug': lambda: self.plug_title(n)}.get(T, lambda: T)()
+
+    def plug_title(self, n):
+        d = PN.plug_def(n.f.get('pid')); return d['label'] if d else 'Missing plugin node ' + str(n.f.get('pid'))
 
     def subtitle(self, n):
         f, T = n.f, n.type
@@ -363,6 +400,8 @@ class Graph:
             return ' '.join(x for x in [f.get('qual'), f"[{f['array']}]" if f.get('array') else '', ('= ' + str(f['init'])) if T == 'global' and f.get('init') and not f.get('array') else ''] if x)
         if T == 'global' and f.get('init'): return '= ' + str(f['init'])
         if T == 'literal': return str(f.get('value', ''))
+        if T == 'plug':
+            d = PN.plug_def(f.get('pid')); return d['plugin_title'] if d else 'plugin not found'
         if T == 'func': return 'returns ' + (f.get('ret') or 'void')
         if T in CALLS:
             r = self.ret_type(n); bits = []
@@ -370,6 +409,25 @@ class Graph:
             if f.get('inline'): bits.append('inline value')
             return ' · '.join(bits)
         return ''
+
+    def has_inline(self, n):
+        """Plugin node that can be used as a value (it returns something and is not a plain statement)."""
+        d = PN.plug_def(n.f.get('pid')) if n.type == 'plug' else None
+        return bool(d and d['both'])
+
+    def plug_spec(self, n, ei, en):
+        d = PN.plug_def(n.f.get('pid'))
+        if not d: return [], []
+        ins, outs = PN.pins(d, n.f)
+        fl = PN.is_flow(d, n.f)
+        return ([ei] if fl else []) + [Pin(i, t, l) for i, t, l in ins], ([en] if fl else []) + [Pin(i, t, (f.get('save') or l) if (fl and i == 'out') else l) for (i, t, l), f in ((o, n.f) for o in outs)]
+
+    def plug_text(self, n):
+        d = PN.plug_def(n.f.get('pid'))
+        def arg(k):
+            p = next((i for i in PN.pins(d, n.f)[0] if i[0] == k), None); dflt = next((i['default'] for i in d['inputs'] if i['id'] == k), '')
+            return self.val(n, k) or dflt or zero(p[1] if p else '')
+        return PN.render(d, n.f, arg)
 
     def spec(self, n):
         """(title, inputs, outputs); every pin is a Pin(id, type, label); E = execution."""
@@ -415,6 +473,7 @@ class Graph:
             'setmember': ([ei, P('a', 'void*', 'object'), P('b', '', 'value')], [en]),
             'readoff': ([P('a', 'void*', 'base pointer')], [P('out', t, 'value')]),
             'writeoff': ([ei, P('a', 'void*', 'base pointer'), P('b', t, 'value')], [en]),
+            'plug': self.plug_spec(n, ei, en),
             'expr': ([P(k, '', k.upper()) for k in placeholders(f.get('tpl'))], [P('out', t, 'result')]),
             'stmt': ([ei] + [P(k, '', k.upper()) for k in placeholders(f.get('tpl'))], [en]),
         }.get(T, ([], []))
@@ -440,6 +499,7 @@ class Graph:
             if T == 'hook':
                 if n.f.get('sym') in seen_h: out.append(('err', n.id, f'{title}: this function is already hooked by another node'))
                 seen_h[n.f.get('sym')] = n.id
+            if T == 'plug' and not PN.is_loaded(n.f.get('pid')): out.append(('warn', n.id, f"{title}: its plugin is not loaded (the copy saved in the graph is used)"))
             if T in ('func', 'global'):
                 k = n.f.get('name')
                 if k in names: out.append(('err', n.id, f'Name "{k}" is defined more than once'))
@@ -456,13 +516,15 @@ class Graph:
                 elif h.f.get('mode') in ('before', 'after'): out.append(('warn', n.id, f'{title}: the hook already calls the original ("{h.f.get("mode")}" mode): use Manual mode to place it yourself'))
             if T == 'callfn' and not self.fn(n): out.append(('err', n.id, f'Call to "{n.f.get("name") or "?"}": function not defined'))
             inline = T in CALLS and n.f.get('inline')
+            pd = PN.plug_def(n.f.get('pid')) if T == 'plug' else None
             if inline and self.ret_type(n) == 'void': out.append(('err', n.id, f'{title}: returns void, so it cannot be used as a value'))
             if T == 'local' and n.id not in reach: out.append(('info', n.id, f'{title}: not inside any function, so it is declared as a global variable')); continue
-            if (T in CALLS and not inline) or T in ('if', 'switch', 'for', 'while', 'local', 'setvar', 'setmember', 'setindex', 'writeoff', 'stmt', 'ret'):
+            if (T in CALLS and not inline) or T in ('if', 'switch', 'for', 'while', 'local', 'setvar', 'setmember', 'setindex', 'writeoff', 'stmt', 'ret') or (pd and PN.is_flow(pd, n.f)):
                 if n.id not in reach: out.append(('warn', n.id, f'{title}: unreachable (not connected to a Hook or Function)')); continue
-            if T in ('local', 'ret', 'hook', 'func', 'global'): continue
-            if (inline or T in ('expr', 'literal', 'op', 'cmp', 'logic', 'not', 'addr', 'deref', 'isnull', 'cast', 'member', 'readoff', 'getvar', 'construct', 'index')) and not any(e[0][0] == n.id for e in self.edges): continue
+            if T in ('local', 'ret', 'hook', 'func', 'global') or (pd and pd['place']): continue
+            if (inline or T in ('expr', 'literal', 'op', 'cmp', 'logic', 'not', 'addr', 'deref', 'isnull', 'cast', 'member', 'readoff', 'getvar', 'construct', 'index') or (pd and not PN.is_flow(pd, n.f) and not pd['place'])) and not any(e[0][0] == n.id for e in self.edges): continue
             for p in self.spec(n)[1]:
+                if pd and (any(i['id'] == p.id and i['default'] for i in pd['inputs']) or (pd.get('repeat') and p.id.startswith(pd['repeat']['id']))): continue  # the plugin gives a default
                 if p.type != E and not self.linked(n.id, p.id, 'i') and not str(n.d.get(p.id, '')).strip(): out.append(('warn', n.id, f'{title}: input "{p.label}" is empty (a default value is used)'))
         return out
 
@@ -532,6 +594,10 @@ class Graph:
         if T == 'for': return f.get('var') or f'i{n.id}'
         if T in CALLS: return self.call_text(n) if f.get('inline') else (f.get('save') or f'r{n.id}')
         if T == 'getvar': return f.get('variable', '')
+        if T == 'plug':
+            d = PN.plug_def(f.get('pid'))
+            if not d: return ''
+            return (f.get('save') or f'r{n.id}') if PN.is_flow(d, f) else '(' + self.plug_text(n) + ')'
         if T == 'literal': return fmt_value(f.get('type'), f.get('value')) or zero(f.get('type'))
         A, B = self.arg(n, 'a'), self.arg(n, 'b')
         if T in ('op', 'cmp', 'logic'): return f"({A} {f.get('op', '+')} {B})"
@@ -572,6 +638,10 @@ class Graph:
             elif T == 'setindex': o += f"{P}{self.arg(n, 'a')}[{self.arg(n, 'b')}] = {self.arg(n, 'c')};\n"
             elif T == 'setmember': o += f"{P}{self.arg(n, 'a')}{f.get('arrow', '->')}{f.get('member', '')} = {self.arg(n, 'b')};\n"
             elif T == 'writeoff': o += f"{P}*reinterpret_cast<{f.get('type', '')}*>(reinterpret_cast<u8*>({self.arg(n, 'a')}) + {f.get('offset') or '0'}) = {self.arg(n, 'b')};\n"
+            elif T == 'plug' and PN.plug_def(f.get('pid')) and PN.is_flow(PN.plug_def(f.get('pid')), f):
+                d = PN.plug_def(f.get('pid')); s = self.plug_text(n).strip()
+                if d['output'] and (f.get('save') or self.linked(n.id, 'out', 'o')): o += f"{P}{d['output']['type'] or 'auto'} {self.ex(n, 'out')} = {s};\n"
+                else: o += f"{P}{s}{'' if s[-1:] in (';', '}') else ';'}\n"
             elif T == 'stmt':
                 s = re.sub(r'\$([a-h])', lambda m: self.arg(n, m[1]), f.get('tpl', '')).strip()
                 o += f"{P}{s}{'' if s[-1:] in (';', '}') else ';'}\n"
@@ -581,9 +651,38 @@ class Graph:
             nid = self.nxt(nid, 'next')
         return o
 
+    def plug_defs(self):
+        seen, out = set(), []
+        for n in self.nodes.values():
+            d = PN.plug_def(n.f.get('pid')) if n.type == 'plug' else None
+            if d and d['pid'] not in seen: seen.add(d['pid']); out.append(d)
+        return out
+
+    def plug_init(self):
+        """Code a plugin asks to run once at startup (inside exl_main): the "init" lines of the nodes in use, then every "main" node."""
+        o = ''; seen = set()
+        for d in self.plug_defs():
+            for l in d['init']:
+                if l not in seen: seen.add(l); o += f'  {l.strip()}\n'
+        for n in sorted((n for n in self.nodes.values() if n.type == 'plug'), key=lambda n: (n.y, n.x, n.id)):
+            d = PN.plug_def(n.f.get('pid'))
+            if d and d['place'] == 'main':
+                s = self.plug_text(n).strip(); o += f"  {self._m(n.id)}{s}{'' if s[-1:] in (';', '}') else ';'}\n"
+        return o
+
+    def plug_header(self):
+        """#include lines and helper code asked for by the plugin nodes in use."""
+        inc = [l for d in self.plug_defs() for l in PN.include_lines(d)]; have = set(self.inc.splitlines()); o = ''
+        for l in dict.fromkeys(inc):
+            if l not in have: o += l + '\n'
+        for d in self.plug_defs():
+            if d['helpers'].strip(): o += f"\n// helper from plugin {d['plugin_title']}\n{d['helpers'].strip()}\n"
+        return o
+
     def gen(self):
         V = list(self.nodes.values()); ty = lambda t: [n for n in V if n.type == t]
-        o = f'// Generated by Odyssey Node Editor - place in your exlaunch project (src/program/main.cpp)\n#include <exlaunch.hpp>\n{self.inc}\n\n'
+        o = f'// Generated by Odyssey Node Editor - place in your exlaunch project (src/program/main.cpp)\n#include <exlaunch.hpp>\n{self.inc}\n'
+        o += self.plug_header() + '\n'
         for n in ty('global'): o += f"{self._m(n.id)}{self.decl(n.f, n.f.get('init') or '')};\n"
         reach = self.reachable()
         for n in ty('local'):  # a variable declared outside any function is a global
@@ -602,7 +701,7 @@ class Graph:
             if m == 'replace' and v: o += '    return {};\n'
             o += '  }\n};\n'
         installs = ''.join(f"  Hook{n.id}::InstallAtSymbol(\"{n.f.get('sym', '')}\");\n" if self.install == 'symbol' and n.f.get('sym') and not str(n.f['sym']).startswith('sub_') else f"  Hook{n.id}::InstallAtOffset(0x{self.sg(n)['o']:x});\n" for n in hs)
-        return o + f'\nextern "C" void exl_main(void*, void*) {{\n  exl::hook::Initialize();\n{installs}}}\n\nextern "C" NORETURN void exl_exception_entry() {{ EXL_ABORT(\"Unhandled exception\"); }}\n'
+        return o + f'\nextern "C" void exl_main(void*, void*) {{\n  exl::hook::Initialize();\n{self.plug_init()}{installs}}}\n\nextern "C" NORETURN void exl_exception_entry() {{ EXL_ABORT(\"Unhandled exception\"); }}\n'
 
     def gen_map(self):
         """(code, {node id: [0-based line numbers]}) - lets the editor highlight the code of the selected node."""

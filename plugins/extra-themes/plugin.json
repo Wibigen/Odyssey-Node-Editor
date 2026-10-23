@@ -1,0 +1,58 @@
+{
+  "id": "extra-themes",
+  "title": "Extra themes",
+  "author": "WibiDev",
+  "version": "1.0.0",
+  "icon": "icon.png",
+  "description": "Three more looks for the editor: Midnight, Solarized Light and Mario Red. Choose them in View > Theme. A good example of a plugin that only adds themes.",
+  "themes": [
+    {
+      "id": "midnight",
+      "name": "Midnight",
+      "base": "dark",
+      "accent": "#5b8def",
+      "colors": {
+        "bg": "#0b0f1a",
+        "bg2": "#10162a",
+        "pn": "#151b2e",
+        "node": "#182036",
+        "ln": "#27304a",
+        "grid": "#161d33",
+        "tx": "#e4e9f7",
+        "mu": "#8190b5"
+      }
+    },
+    {
+      "id": "solarized",
+      "name": "Solarized Light",
+      "base": "light",
+      "accent": "#268bd2",
+      "colors": {
+        "bg": "#fdf6e3",
+        "bg2": "#fffdf5",
+        "pn": "#eee8d5",
+        "node": "#fffdf5",
+        "ln": "#d8cfb4",
+        "grid": "#e6dfc7",
+        "tx": "#073642",
+        "mu": "#657b83"
+      }
+    },
+    {
+      "id": "mario",
+      "name": "Mario Red",
+      "base": "dark",
+      "accent": "#e8484f",
+      "colors": {
+        "bg": "#1a1112",
+        "bg2": "#221618",
+        "pn": "#2b1b1e",
+        "node": "#2f2023",
+        "ln": "#4a2b30",
+        "grid": "#2a1a1d",
+        "tx": "#f6e9ea",
+        "mu": "#b58d92"
+      }
+    }
+  ]
+}

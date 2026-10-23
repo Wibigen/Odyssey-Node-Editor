@@ -1,8 +1,80 @@
 # Changelog
 Versioning: +1 for a big update, +0.1 for a small one.
 
-## v4.2.1
-- Right-click a call node > **Use as a value (hide execution pins)** (checkable): hides / shows its execution pins, e.g. to feed its result into a variable or another block.
+## v7.6
+- **Fix: the menu of a link released on empty space had no plugin function.** It now has **Plugin function…** next to *Game function…* (opens the plugin function browser; the chosen node is created and connected). Plugin node blocks were already in the categories.
+- **Plugin nodes are easier to recognise:** a soft halo and a thin edge in the plugin's colour around the node (selected nodes keep the accent border).
+- **Tutorials:** *Help topics* is now **Tutorials**. The plugin pages are no longer listed one by one in the Help menu; the window lists the editor's tutorials first, then a separate **Plugin tutorials** section.
+- **15 tutorials for the editor itself** (`tutorials/`, one topic each): start here, project setup, first mod, canvas, game functions and hooks, variables and math, flow, own functions, pointers, custom code and import, groups / comments / library, output and building, preferences and shortcuts, plugins, troubleshooting.
+- **Interface tour** (*Help > Interface tour…*): 11 steps with the part of the window highlighted, Back / Next, Skip, Esc and arrow keys. Shown automatically the first time (after the setup dialog), then never again once completed or skipped; left unfinished it comes back at the next start. Setting `tour_done` in the config.
+- New help button actions: `tour`, `settings`. Checked here: headless Qt run of the window, the tutorials window, the whole tour step by step, the released-link menu, the plugin halo.
+
+## v7.5
+- **Fix: ZL + ZR blocked the game's buttons even when ImGui had no window** (static text, pictures). The controller now goes to ImGui only while an interactive window is on screen (not a child window, not `NoInputs`, not the fallback "Debug" window); background draw lists don't count.
+- **Gamepad settings in the editor.** *Exlaunch base…* of the Dear ImGui plugin has a new **Gamepad** group: *Combo* (two lists: *Hold* + *then press*, any of A B X Y L R ZL ZR + - D-pad, stick clicks; the same button twice = one button), *Automatic* (no combo) or *Never*. The choice is stored with the editor settings and written to `src/odn_imgui_config.h` (generated, tracked by *Remove*); the C++ falls back to hold ZL + press ZR without that file.
+- Generic mechanism for plugin authors: `base.settings` in plugin.json (file, template, fields with options and `enabled_if`); values are checked against the options before they reach the C++ file. Documented in PLUGINS.md.
+- Dear ImGui plugin 1.3.0; tutorial updated. Checked here: clang syntax check of the ImGui files in the three modes, apply / change settings / revert on a copy of SMO-Exlaunch-Base + OdysseyHeaders, dialog opened headless. Not checked: a real Switch toolchain link and the game.
+
+## v7.4
+- **Fix: the game crashed at startup after the ImGui patch** (Ryujinx: invalid access at 0x10 in `strlen`, called from `Logger::log`). The debug output function kept its pointer in a `register asm("x0")` variable while calling `strlen()`, which overwrote it. The registers are now set inside the asm block. Found from the Ryujinx log; confirmed working on a real run.
+- **Help pages from plugins.** New `help` key in plugin.json (a Markdown file, optional buttons: `template:<name>`, `base:<plugin id>`, `browser:<plugin id>`, `plugins`); every enabled plugin's pages are listed in the Help menu, and *Help > Help topics…* (F1) opens a non-modal window with a topic list, search and the page, so you can follow it while you work. Without the key, the files of `help/*.md` are used.
+- **Dear ImGui plugin 1.2.0:** the tutorial *How to use Dear ImGui*: quick start in five steps, how a draw function works (`Begin` / `End`, Add draw function), finding nodes, values / pointers / printf arguments, recipes (checkbox, slider, FPS counter, overlay, drawing on screen, demo window), controls in the game (ZL + ZR), a troubleshooting table.
+
+## v7.3
+- **Dear ImGui now builds on exlaunch + OdysseyHeaders bases** (Fuzzy2319's SMO-Exlaunch-Base). Fixes found by compiling a real project step by step:
+  - The payload no longer ships `nn/`, `sead/` or `nvn/` headers (they clashed with the ones of OdysseyHeaders: `nn::Result` redefined, `<time.h>` hidden). Only `glslc`, `nvnTool` and `nvn_CppFuncPtrImpl.h` are added, when missing.
+  - New `src/lib.hpp` glue: includes `nn/types.h`, exlaunch's `lib/result.hpp` and `lib/diag/assert.hpp`, and an `R_ABORT_UNLESS` that accepts both `nn::Result` and exlaunch's integer results. `IM_ASSERT` is now a `do { } while (0)` (it broke `if (...) IM_ASSERT(); else`).
+  - `Logger` is reduced to debug output (`svcOutputDebugString`): no socket, no `nn::Result`, no `nn/socket.h` (which lacks `in_addr` in OdysseyHeaders).
+  - `fsHelper`, `ImguiShaderCompiler`, `imgui_nvn.cpp`: `nn/` include prefixes, `IsSuccess`/`IsFailure`, `lib/hook/trampoline.hpp` for `HOOK_DEFINE_TRAMPOLINE`.
+  - `InputHelper`: field names of the open-ead `nn/hid.h` (`mX`, `mKeys`...); game-pad styles missing from older SDKs removed; touch screen reading disabled (the call is not declared there).
+  - Frame time from the ARM counter (`cntpct_el0`), so `os/os_tick.hpp` is not needed.
+  - Include folders are added only when they exist: `include/NintendoSDK`, `include/NintendoSDK/nvn`, `include/NintendoSDK/nvnTool`, `libs/NintendoSDK`...
+- Base patch: the executable target is found even when it is written as a variable (`add_executable(${SUBSDKX})` + `set(SUBSDKX subsdk9)`), and the `target_link_libraries` keyword is read from any call of the project (the v7.2 detection only matched a literal target name, so the CMake error could come back).
+- Checked here: the patch applied to a copy of SMO-Exlaunch-Base + OdysseyHeaders, then `clang -fsyntax-only` on every ImGui file (no error in the plugin files; the v7.2 files fail), then Remove restores the project exactly. Not checked here: the real devkitA64 link and the game itself.
+
+## v7.2
+- Fix: CMake error "The keyword signature for target_link_libraries has already been used" after the ImGui patch. The block no longer calls `target_embed_binaries` (which uses the plain signature): it embeds imgui.bin with `__add_binary_library` and links it with the same signature your CMakeLists uses (`PRIVATE` or plain). The CMake block now has a revision number: a block written by v7.0 / v7.1 is detected as outdated and replaced by "Exlaunch base..." > Repair (or by the offer shown before Write to project / Compile). Checked with a real CMake run on a mock project (before: error, after: configures).
+
+## v7.1
+- Fix: the Dear ImGui base patch said "no CMakeLists.txt" for projects that have one. The project folder is now resolved tolerantly (`odyssey/projectpath.py`): quotes / spaces, `/` and `\\` mixed, `\\wsl$\` and `\\wsl.localhost\`, a Linux path (`/home/me/mod`) with the build in WSL (the distro is found automatically), MSYS / Git Bash paths (`/c/Users/me/mod`), a file (main.cpp) or a sub folder (src/program) instead of the root, a parent folder holding one project, any capitalisation of CMakeLists.txt. When nothing is found, the message lists every folder that was tried.
+
+## v7.0
+- **Dear ImGui plugin** (bundled, **disabled by default**): ~350 ImGui functions, 41 ImDrawList methods and ~500 constants as nodes, generated from imgui.h 1.90.6 (`plugins/imgui/tools/gen_catalog.py`), plus *Add draw function*, ImVec2, ImVec4, IM_COL32, flags OR, address of, screen size, frame time, FPS.
+- **Function catalogs** in the plugin system: a plugin can ship a big `functions.json`; nodes are built on demand. New **plugin function browser** (Edit > Add plugin function, Ctrl+Shift+K; button in the palette; empty-canvas menu; "Function browser..." in the explorer).
+- New node options for plugins: `both` (a statement that can also be used as a value: right-click > Use as a value), `place: "main"` (emitted once inside exl_main, no pins), `init` (lines emitted once in exl_main, de-duplicated), `default_enabled: false`, `catalog`, `templates`, `base`.
+- **Exlaunch base patch**: when the plugin is enabled, when its template is loaded or when a graph that uses it is written, the editor offers to add ImGui to the exlaunch project (copy-if-missing, never overwrites; one marked CMake block with a backup; revertible; edited files are kept on removal). Plugin explorer > *Exlaunch base...* shows the state, repairs or removes it.
+- **File > New from template**: templates shipped by enabled plugins. *Hello ImGui*: loads ImGui and shows a window with a text and a click counter.
+- Unused results of plugin statements are no longer stored in an unused variable.
+- Credits and licences: CraftyBoss SMO-Exlaunch-Base (GPL-2.0), LunaKit (GPL-2.0), exlaunch, exlaunch-cmake, Dear ImGui (MIT); see `plugins/imgui/NOTICE.md` and `plugins/imgui/LICENSES/`.
+
+## v6.0
+- **Plugin system** (Plugins menu, Ctrl+Shift+P). A plugin is a folder (or a .zip / .odnp) with a plugin.json: it can add **nodes** (declarative C++ templates with typed pins, fields, includes and helper code), **themes**, and, with an optional plugin.py, menu commands. Documented in PLUGINS.md.
+- **Plugin explorer**: lists every plugin with its square picture, title, author, version and description (defaults when missing), shows what it contains and its problems, and lets you enable / disable, install (archive or folder), remove, create a new plugin skeleton, reload and open the folder.
+- Graphs keep a copy of the plugin nodes they use (also saved functions in the library), so they still work when the plugin is disabled or missing.
+- **Bundled plugins**: *Standard I/O* (printf, puts, snprintf, sscanf, fopen / fgets...), *Strings* (strlen, compare, contains, copy, atoi...), *Extra themes* (Midnight, Solarized Light, Mario Red).
+- **Keyboard shortcuts**: Tools > Keyboard shortcuts... lists every command (and plugin commands); click a shortcut, press the new keys; conflicts are flagged; reset one / all.
+- Theme menu and Preferences list the themes added by plugins; new "Theme default" accent.
+
+## v5.4
+- The graph icon bar is rebuilt from plain fixed-size buttons (left / centre / right groups): no more squeezed icons, no overflow chevron, centre group really centred. "Made by WibiDev" moved to the bottom-left of the status bar.
+
+## v5.3
+- Fix: the toolbar spacers and the status bar widgets were drawn as grey boxes (theme background); icons are bigger and better spaced. Any leftover window toolbar from an older saved layout is hidden. "Made by WibiDev" sits in the bottom-right corner of the status bar.
+
+## v5.2
+- The icon bar now sits at the top of the graph area (not above the whole window). Clear shows its label next to the icon; the catalog uses the book icon again.
+- "Made by WibiDev" highlighted at the top of Help > About and shown in the status bar.
+
+## v5.1
+- **Toolbar layout**: left = New, Open, Save as | Undo, Redo; centre = Clear, Fit view, Find in graph; right = Open the catalog, Preferences. Group, Comment and Library were removed from the toolbar (still in the menus and right-click).
+
+## v5.0
+- **Real icons instead of emojis / symbols**: a small vector icon set (drawn from SVG paths, no image files) is used in the toolbar, the output panel buttons, the block palette, the Problems list, the search bar, the function browser (star, GitHub link), list editors and the Ryujinx panel. Icons follow the theme.
+- **Toolbar**: icon only (tooltip = name + shortcut). Write to project / Compile are no longer there (they stay in the panel below); search was added.
+- **Themes**: View > Theme (Dark / Light) and View > Theme > Accent color (Red, Orange, Amber, Green, Teal, Blue, Purple, Pink); also in Preferences > General > Appearance. Applied live, remembered. The canvas, nodes, code colors, search bar and combo arrows follow the theme.
+- **Startup graph**: File > Save as startup graph and Forget the startup graph now ask for confirmation.
+- **Credits**: WibiDev added (Help > About).
+- **Version**: the version shown in the window title and in About is now read from one place (`odyssey/__init__.py`); it had stayed on 4.2.1 since 4.3. (4.2.1 is the only three-number release.)
 
 ## v4.6
 - **Catalog: every entry of file_list.yml** when the Filter is empty (Settings; the default filter is unchanged). The reader is now a real list parser: labels given as a list of aliases (constructors C1/C2, 3929 entries), quoted labels, thunks, operators, templates, plain C names and entries without a label (named `sub_<offset>`, hooked / called by offset) are all kept. On the current OdysseyDecomp: 74171 entries, all present (it used to miss about 4000). Names that are not plain C++ identifiers are called by address automatically. Extract the catalog again to get it.
@@ -15,6 +87,9 @@ Versioning: +1 for a big update, +0.1 for a small one.
 
 ## v4.3
 - **Use as a value (no execution pins)** is now an option of the right-click menu of a call node (checkable; disabled when the call returns void). It is no longer a check box in the inspector.
+
+## v4.2.1
+- Right-click a call node > **Use as a value (hide execution pins)** (checkable): hides / shows its execution pins, e.g. to feed its result into a variable or another block.
 
 ## v4.2
 - **C++ import**: `x += y`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`, `<<=`, `>>=` on variables, members (`pos.x -= 1`) and array elements (`counts[2] += 1`); `a[i]` and `a[i] = v`; arrays (`int t[4] = {...}`, global or local), `static` / `constexpr` qualifiers (no longer dropped on globals); template calls such as `al::getSceneObj<GameDataHolder>(scene)`.

@@ -7,8 +7,10 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFormLayout, QFrame, QGroup
                                QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from .shells import invocation
+from . import plugnodes as PN
 from .theme import C
-from .graph import ADV_KEYS, CALLS, COMMON_TYPES, E, GRP, NODE_FIELDS, PRE, QUALS, parse_params, split_top
+from .icons import bind
+from .graph import ADV_KEYS, CALLS, COMMON_TYPES, E, GRP, NODE_FIELDS, PRE, QUALS, fields_for, parse_params, split_top
 from .rettype import ask_ret_type, remember
 from .valueedit import make_editor
 
@@ -52,8 +54,13 @@ class CppHighlighter(QSyntaxHighlighter):
         def fmt(c, bold=False):
             f = QTextCharFormat(); f.setForeground(QColor(c)); f.setFontWeight(QFont.Bold if bold else QFont.Normal); return f
         kw = r'\b(static|void|return|if|else|switch|case|default|break|for|while|int|float|bool|auto|const|extern|reinterpret_cast|static_cast|nullptr|true|false|u8|u32|s32|f32|class|struct)\b'
-        self.rules = [(re.compile(r'\b(0x[0-9a-fA-F]+|\d+\.?\d*f?)\b'), fmt('#6dd26d')), (re.compile(kw), fmt('#6aa7ff', True)), (re.compile(r'^\s*#\w+'), fmt('#c792ea')),
-                      (re.compile(r'"[^"]*"'), fmt('#e6b673')), (re.compile(r'//.*|/\*.*?\*/'), fmt('#7f8aa3'))]
+        self.fmt, self.kw = fmt, kw; self.restyle(False)
+
+    def restyle(self, redo=True):
+        fmt = self.fmt
+        self.rules = [(re.compile(r'\b(0x[0-9a-fA-F]+|\d+\.?\d*f?)\b'), fmt(C['code_num'])), (re.compile(self.kw), fmt(C['code_kw'], True)), (re.compile(r'^\s*#\w+'), fmt(C['code_pp'])),
+                      (re.compile(r'"[^"]*"'), fmt(C['code_str'])), (re.compile(r'//.*|/\*.*?\*/'), fmt(C['code_cm']))]
+        if redo: self.rehighlight()
 
     def highlightBlock(self, text):
         for rx, f in self.rules:
@@ -70,22 +77,30 @@ class Palette(QWidget):
     add_pre = Signal(str)  # palette name
     add_lib = Signal(str)  # path of a saved function (.odnf)
     browse = Signal()      # open the game function browser
+    plugfn = Signal()      # open the plugin function browser
 
     def __init__(self):
         super().__init__()
         v = QVBoxLayout(self); v.setContentsMargins(8, 8, 8, 8); v.setSpacing(8)
-        self.btn = QPushButton('＋  Game function…'); self.btn.setObjectName('pri'); self.btn.setToolTip('Search the game for a function to call or hook (Ctrl+Shift+F)'); v.addWidget(self.btn)
+        self.btn = QPushButton('  Game function…'); bind(self.btn, 'plus', '#ffffff'); self.btn.setObjectName('pri'); self.btn.setToolTip('Search the game for a function to call or hook (Ctrl+Shift+F)'); v.addWidget(self.btn)
+        self.btn2 = QPushButton('  Plugin function…'); bind(self.btn2, 'func'); self.btn2.setToolTip('Functions added by plugins, such as Dear ImGui (Ctrl+Shift+K)'); self.btn2.clicked.connect(self.plugfn.emit); v.addWidget(self.btn2)
         hint = QLabel('Call or hook any function of Super Mario Odyssey.'); hint.setWordWrap(True); hint.setStyleSheet('color:#8a91a5'); v.addWidget(hint)
         self.filter = QLineEdit(); self.filter.setPlaceholderText('Filter blocks…'); self.filter.setClearButtonEnabled(True); v.addWidget(self.filter)
         self.tree = DragTree(); self.tree.setHeaderHidden(True); self.tree.setDragEnabled(True); v.addWidget(self.tree, 1)
         tip = QLabel('Double-click or drag a block onto the canvas.'); tip.setWordWrap(True); tip.setStyleSheet('color:#8a91a5'); v.addWidget(tip)
+        self.lib = None; self.rebuild()
+        self.btn.clicked.connect(self.browse.emit); self.filter.textChanged.connect(self._filter)
+        self.tree.itemDoubleClicked.connect(self._double)
+
+    def rebuild(self):
+        """(Re)build the block tree from GRP (built-in blocks + plugin nodes), keeping the library section."""
+        self.tree.clear(); self.btn2.setVisible(bool(PN.CATALOG)) if hasattr(self, 'btn2') else None
         for g, items in GRP.items():
             top = QTreeWidgetItem([g]); top.setFlags(Qt.ItemIsEnabled); self.tree.addTopLevelItem(top)
             for k in items:
                 c = QTreeWidgetItem([k]); c.setData(0, Qt.UserRole, 'odn:pre:' + k); c.setToolTip(0, PRE[k][3]); top.addChild(c)
         self.lib = QTreeWidgetItem(['My library']); self.lib.setFlags(Qt.ItemIsEnabled); self.tree.addTopLevelItem(self.lib); self.tree.expandAll()
-        self.btn.clicked.connect(self.browse.emit); self.filter.textChanged.connect(self._filter)
-        self.tree.itemDoubleClicked.connect(self._double)
+        self._filter(self.filter.text())
 
     def _double(self, it, _=0):
         v = it.data(0, Qt.UserRole) or ''
@@ -119,7 +134,7 @@ class ListEditor(QWidget):
     def __init__(self, kind, text):
         super().__init__(); self.kind, self.rows = kind, []
         v = QVBoxLayout(self); v.setContentsMargins(0, 0, 0, 0); v.setSpacing(6); self.box = QVBoxLayout(); self.box.setSpacing(6); v.addLayout(self.box)
-        self.btn = QPushButton('＋  Add ' + self.NOUN[kind]); self.btn.clicked.connect(self._new); v.addWidget(self.btn)
+        self.btn = QPushButton('  Add ' + self.NOUN[kind]); bind(self.btn, 'plus', size=16); self.btn.clicked.connect(self._new); v.addWidget(self.btn)
         for item in self._parse(text): self._row(item)
         self._label()
 
@@ -140,7 +155,7 @@ class ListEditor(QWidget):
             c = self._combo(item[0]); h.addWidget(c, 3); ws.append(c)
             if self.kind == 'params':
                 e = QLineEdit(item[1]); e.setPlaceholderText('name'); e.textEdited.connect(lambda _: self._emit()); h.addWidget(e, 2); ws.append(e)
-        x = QToolButton(); x.setText('✕'); x.setToolTip('Remove'); x.clicked.connect(lambda _=False, fr=fr: self._remove(fr)); h.addWidget(x)
+        x = QToolButton(); bind(x, 'x', size=14); x.setToolTip('Remove'); x.clicked.connect(lambda _=False, fr=fr: self._remove(fr)); h.addWidget(x)
         self.box.addWidget(fr); self.rows.append((fr, num, ws))
 
     def _label(self):
@@ -207,7 +222,7 @@ class Inspector(QScrollArea):
             for w in self.sections: w.setVisible(False)
             return
         adv = []
-        for fd in NODE_FIELDS.get(n.type, []):
+        for fd in fields_for(n):
             if fd.key in ('save', 'inline') and n.type in ('callgame', 'callfn', 'callext') and self.graph.ret_type(n) == 'void': continue  # nothing to save / use as a value
             if fd.key == 'inline' and n.type in CALLS: continue  # now a right-click option on the node
             if fd.key in ADV_KEYS and n.type in ('local', 'global'): adv.append(fd); continue

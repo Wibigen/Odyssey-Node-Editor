@@ -1,0 +1,92 @@
+[
+ {
+  "title": "Start here",
+  "file": "01_start.md",
+  "buttons": [
+   {
+    "label": "Play the interface tour",
+    "do": "tour"
+   }
+  ]
+ },
+ {
+  "title": "Set up your project",
+  "file": "02_setup.md",
+  "buttons": [
+   {
+    "label": "Open Settings",
+    "do": "settings"
+   }
+  ]
+ },
+ {
+  "title": "Your first mod",
+  "file": "03_first_mod.md",
+  "buttons": []
+ },
+ {
+  "title": "The canvas: nodes, pins and links",
+  "file": "04_canvas.md",
+  "buttons": []
+ },
+ {
+  "title": "Calling and hooking game functions",
+  "file": "05_game_functions.md",
+  "buttons": []
+ },
+ {
+  "title": "Variables, values and math",
+  "file": "06_values.md",
+  "buttons": []
+ },
+ {
+  "title": "Flow control",
+  "file": "07_flow.md",
+  "buttons": []
+ },
+ {
+  "title": "Your own functions",
+  "file": "08_functions.md",
+  "buttons": []
+ },
+ {
+  "title": "Pointers and memory",
+  "file": "09_pointers.md",
+  "buttons": []
+ },
+ {
+  "title": "Custom code and importing C++",
+  "file": "10_custom_code.md",
+  "buttons": []
+ },
+ {
+  "title": "Groups, comments and the library",
+  "file": "11_organize.md",
+  "buttons": []
+ },
+ {
+  "title": "Code, problems and building",
+  "file": "12_output.md",
+  "buttons": []
+ },
+ {
+  "title": "Preferences, themes and shortcuts",
+  "file": "13_preferences.md",
+  "buttons": []
+ },
+ {
+  "title": "Plugins",
+  "file": "14_plugins.md",
+  "buttons": [
+   {
+    "label": "Open the Plugin explorer",
+    "do": "plugins"
+   }
+  ]
+ },
+ {
+  "title": "Troubleshooting",
+  "file": "15_troubleshooting.md",
+  "buttons": []
+ }
+]

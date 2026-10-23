@@ -1,4 +1,7 @@
 """Preferences: how the editor behaves and looks (the project / build settings are in Settings)."""
+from PySide6.QtGui import QColor, QIcon, QPixmap
+from .icons import icon
+from .theme import ACCENTS, PLUGIN_THEMES, theme_choices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QPushButton, QSpinBox, QTabWidget, QVBoxLayout, QWidget)
 
 from .config import DEFAULTS
@@ -20,6 +23,12 @@ class PrefsDialog(QDialog):
         for k, lab in NEWMODE: self.newmode.addItem(lab, k)
         self.newmode.setToolTip('What File > New shows. The startup graph is saved with File > Save as startup graph.')
         f.addRow('Open on', self.startup); f.addRow('File > New shows', self.newmode); f.addRow(self.autosave); f.addRow(self.confirm); v.addWidget(g)
+        g = QGroupBox('Appearance'); f = QFormLayout(g)
+        self.theme = QComboBox()
+        for key, lab, base in theme_choices(): self.theme.addItem(icon('moon' if base == 'dark' else 'sun', size=16), lab, key)
+        self.accent = QComboBox(); self.accent.addItem('Theme default', 'Theme')
+        for nm, col in ACCENTS.items(): pm = QPixmap(14, 14); pm.fill(QColor(col)); self.accent.addItem(QIcon(pm), nm, nm)
+        f.addRow('Theme', self.theme); f.addRow('Accent color', self.accent); v.addWidget(g)
         g = QGroupBox('Canvas'); f = QFormLayout(g)
         self.linktop = QCheckBox('Draw the links of the selected node above everything else'); self.linktop.setToolTip('Select a node: its links are drawn on top of the other nodes so you can follow them.')
         self.autogroup = QCheckBox('Put a node into a group when I drop it inside the group frame'); self.autogroup.setToolTip('Only nodes that are not in a group yet. You can also right-click a node in front of a group.')
@@ -46,11 +55,11 @@ class PrefsDialog(QDialog):
 
     def load(self, c):
         self.startup.setCurrentIndex(max(0, self.startup.findData(c['pref_startup']))); self.autosave.setChecked(bool(c['pref_autosave'])); self.confirm.setChecked(bool(c['pref_confirm_new']))
-        self.autogroup.setChecked(bool(c.get('pref_autogroup', True))); self.dropmenu.setChecked(bool(c.get('pref_dropmenu', True))); self.lnum.setChecked(bool(c.get('pref_linenumbers', True))); self.calls.setCurrentIndex(max(0, self.calls.findData(c.get('pref_calls', 'direct')))); self.newmode.setCurrentIndex(max(0, self.newmode.findData(c.get('pref_new', 'startup')))); self.linktop.setChecked(bool(c.get('pref_links_top'))); self.grid.setChecked(bool(c['pref_grid'])); self.snap.setChecked(bool(c['pref_snap'])); self.hl.setChecked(bool(c['pref_highlight']))
+        self.theme.setCurrentIndex(max(0, self.theme.findData(c.get('pref_theme', 'dark')))); self.accent.setCurrentIndex(max(0, self.accent.findData(c.get('pref_accent', 'Red')))); self.autogroup.setChecked(bool(c.get('pref_autogroup', True))); self.dropmenu.setChecked(bool(c.get('pref_dropmenu', True))); self.lnum.setChecked(bool(c.get('pref_linenumbers', True))); self.calls.setCurrentIndex(max(0, self.calls.findData(c.get('pref_calls', 'direct')))); self.newmode.setCurrentIndex(max(0, self.newmode.findData(c.get('pref_new', 'startup')))); self.linktop.setChecked(bool(c.get('pref_links_top'))); self.grid.setChecked(bool(c['pref_grid'])); self.snap.setChecked(bool(c['pref_snap'])); self.hl.setChecked(bool(c['pref_highlight']))
         self.install.setCurrentIndex(max(0, self.install.findData(c.get('pref_install', 'symbol')))); self.wrap.setChecked(bool(c['pref_wrap'])); self.csize.setValue(int(c['pref_code_size'])); self.ui.setValue(int(c['pref_ui_size']))
 
     def defaults(self): self.load({k: v for k, v in DEFAULTS.items() if k.startswith('pref_')})
 
     def values(self):
         return dict(pref_startup=self.startup.currentData(), pref_autosave=self.autosave.isChecked(), pref_confirm_new=self.confirm.isChecked(), pref_grid=self.grid.isChecked(),
-                    pref_snap=self.snap.isChecked(), pref_highlight=self.hl.isChecked(), pref_wrap=self.wrap.isChecked(), pref_code_size=self.csize.value(), pref_ui_size=self.ui.value(), pref_install=self.install.currentData(), pref_autogroup=self.autogroup.isChecked(), pref_dropmenu=self.dropmenu.isChecked(), pref_linenumbers=self.lnum.isChecked(), pref_calls=self.calls.currentData(), pref_new=self.newmode.currentData(), pref_links_top=self.linktop.isChecked())
+                    pref_snap=self.snap.isChecked(), pref_highlight=self.hl.isChecked(), pref_wrap=self.wrap.isChecked(), pref_code_size=self.csize.value(), pref_ui_size=self.ui.value(), pref_install=self.install.currentData(), pref_theme=self.theme.currentData(), pref_accent=self.accent.currentData(), pref_autogroup=self.autogroup.isChecked(), pref_dropmenu=self.dropmenu.isChecked(), pref_linenumbers=self.lnum.isChecked(), pref_calls=self.calls.currentData(), pref_new=self.newmode.currentData(), pref_links_top=self.linktop.isChecked())

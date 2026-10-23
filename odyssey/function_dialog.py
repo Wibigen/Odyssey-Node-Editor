@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QScrollArea, QSplitter, QStackedWidget, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
 from .graph import IDENT, MODES, argname
+from .icons import bind, icon
 from .rettype import ask_ret_type, remember
 from .valueedit import make_editor
 
@@ -78,16 +79,16 @@ class FunctionDialog(QDialog):
         self.q = QLineEdit(); self.q.setPlaceholderText('Search by name…  e.g. setTrans, exePlay, PlayerActorHakoniwa::'); self.q.setClearButtonEnabled(True); l.addWidget(self.q)
         row = QHBoxLayout(); self.grp = QComboBox(); self.grp.addItem(f'All groups ({len(catalog)})', '')
         for p, n in Counter(c['n'].split('::')[0] for c in catalog if '::' in c['n']).most_common(40): self.grp.addItem(f'{p}  ({n})', p)
-        self.only = QCheckBox('Only decompiled (matching)'); self.favonly = QCheckBox('★ Favorites only'); self.favonly.setToolTip('Click the ☆ at the end of a row to make a function a favorite. Favorites are listed first.'); row.addWidget(self.grp, 1); row.addWidget(self.only); row.addWidget(self.favonly); l.addLayout(row)
-        self.tree = ClickTree(); self.tree.setColumnCount(6); self.tree.setHeaderLabels(['Function', 'Returns', 'Args', 'Status', '', '★']); self.tree.setRootIsDecorated(False); self.tree.setUniformRowHeights(True)
-        self.tree.setColumnWidth(0, 330); self.tree.setColumnWidth(1, 90); self.tree.setColumnWidth(2, 40); self.tree.setColumnWidth(3, 90); self.tree.setColumnWidth(4, 34); self.tree.setColumnWidth(5, 34); l.addWidget(self.tree, 1)
+        self.only = QCheckBox('Only decompiled (matching)'); self.favonly = QCheckBox('Favorites only'); self.favonly.setIcon(icon('star_fill', '#e6b422', 16)); self.favonly.setToolTip('Click the star at the end of a row to make a function a favorite. Favorites are listed first.'); row.addWidget(self.grp, 1); row.addWidget(self.only); row.addWidget(self.favonly); l.addLayout(row)
+        self.tree = ClickTree(); self.tree.setColumnCount(6); self.tree.setHeaderLabels(['Function', 'Returns', 'Args', 'Status', '', '']); self.tree.setRootIsDecorated(False); self.tree.setUniformRowHeights(True)
+        self.tree.headerItem().setIcon(5, icon('star_fill', '#e6b422', 14)); self.tree.setColumnWidth(0, 330); self.tree.setColumnWidth(1, 90); self.tree.setColumnWidth(2, 40); self.tree.setColumnWidth(3, 90); self.tree.setColumnWidth(4, 34); self.tree.setColumnWidth(5, 34); l.addWidget(self.tree, 1)
         self.count = QLabel(); self.count.setStyleSheet('color:#8a91a5'); l.addWidget(self.count); split.addWidget(self.left)
         # ---- right: details + block builder ----
         right = QWidget(); r = QVBoxLayout(right); r.setContentsMargins(8, 0, 0, 0)
         self.name = QLabel('Select a function on the left'); self.name.setWordWrap(True); self.name.setTextInteractionFlags(Qt.TextSelectableByMouse); self.name.setStyleSheet('font-size:16px;font-weight:600'); r.addWidget(self.name)
         self.sig = QLabel(); self.sig.setWordWrap(True); self.sig.setTextInteractionFlags(Qt.TextSelectableByMouse); self.sig.setStyleSheet('font-family:Consolas,monospace'); r.addWidget(self.sig)
         info = QFormLayout(); self.i_ret, self.i_off, self.i_status = QLabel(), QLabel(), QLabel(); self.bRet = QPushButton('Change…'); self.bRet.setToolTip('The catalog guesses return types from headers. Change it if this function is marked void but really returns something.')
-        self.bGit = QPushButton('Open on GitHub ↗'); self.bGit.setToolTip('Search this function name in MonsterDruide1/OdysseyDecomp'); rr = QHBoxLayout(); rr.setContentsMargins(0, 0, 0, 0); rr.addWidget(self.i_ret, 1); rr.addWidget(self.bRet); self.ret_row = QWidget(); self.ret_row.setLayout(rr); self.i_sym = QLineEdit(); self.i_sym.setReadOnly(True); self.i_sym.setStyleSheet('font-family:Consolas,monospace;font-size:11px')
+        self.bGit = QPushButton(' Open on GitHub'); bind(self.bGit, 'link', size=16); self.bGit.setToolTip('Search this function name in MonsterDruide1/OdysseyDecomp'); rr = QHBoxLayout(); rr.setContentsMargins(0, 0, 0, 0); rr.addWidget(self.i_ret, 1); rr.addWidget(self.bRet); self.ret_row = QWidget(); self.ret_row.setLayout(rr); self.i_sym = QLineEdit(); self.i_sym.setReadOnly(True); self.i_sym.setStyleSheet('font-family:Consolas,monospace;font-size:11px')
         info.addRow('Returns', self.ret_row); info.addRow('Offset', self.i_off); info.addRow('Symbol', self.i_sym); info.addRow('Status', self.i_status); info.addRow(self.bGit); r.addLayout(info)
         self.rCall = QRadioButton('Call this function from my mod'); self.rHook = QRadioButton('Hook this function  (my graph runs whenever the game calls it)'); self.rCall.setChecked(True); r.addWidget(self.rCall); r.addWidget(self.rHook)
         self.stack = QStackedWidget(); r.addWidget(self.stack, 1)
@@ -128,13 +129,13 @@ class FunctionDialog(QDialog):
         for i in hits[:MAX_ROWS]:
             c = self.cat[i]; it = QTreeWidgetItem([c['n'], c['r'], str(len(c['p'])), 'matching' if c['st'] == 'M' else 'not matched']); it.setData(0, Qt.UserRole, i)
             it.setToolTip(0, f"{c['r']} {c['n']}({', '.join(c['p'])})"); self.tree.addTopLevelItem(it)
-            it.setText(4, '↗'); it.setToolTip(4, f'Search "{short_name(c["n"])}" in OdysseyDecomp on GitHub'); it.setTextAlignment(4, Qt.AlignCenter); it.setTextAlignment(5, Qt.AlignCenter); self.paint_star(it, c['s'] in self.favs)
+            it.setIcon(4, icon('link', 'mu', 16)); it.setToolTip(4, f'Search "{short_name(c["n"])}" in OdysseyDecomp on GitHub'); self.paint_star(it, c['s'] in self.favs)
         self.count.setText(f'{len(hits)} function(s)' + (f' - showing the first {MAX_ROWS}, refine your search' if len(hits) > MAX_ROWS else ''))
         if hits: self.tree.setCurrentItem(self.tree.topLevelItem(0))
         else: self.cur = None; self.ok.setEnabled(False)
 
     def paint_star(self, it, on):
-        it.setText(5, '★' if on else '☆'); it.setForeground(5, QBrush(QColor('#e6b422' if on else '#8a91a5'))); it.setToolTip(5, 'Favorite (click to remove)' if on else 'Make this function a favorite')
+        it.setIcon(5, icon('star_fill', '#e6b422', 16) if on else icon('star', 'mu', 16)); it.setToolTip(5, 'Favorite (click to remove)' if on else 'Make this function a favorite')
 
     def cell_clicked(self, it, col):
         c = self.cat[it.data(0, Qt.UserRole)]

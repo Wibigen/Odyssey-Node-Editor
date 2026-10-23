@@ -1,9 +1,9 @@
 """Main window: node canvas, block palette, inspector, generated code, problems, build."""
 import os, re, time
 from pathlib import Path
-from PySide6.QtCore import QPointF, QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QRadialGradient, QTextCursor, QTextFormat
-from PySide6.QtWidgets import (QDockWidget, QInputDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
+from PySide6.QtCore import QPointF, QSettings, QSize, Qt, QTimer
+from PySide6.QtGui import QAction, QActionGroup, QColor, QGuiApplication, QIcon, QKeySequence, QPainter, QPixmap, QRadialGradient, QTextCursor, QTextFormat
+from PySide6.QtWidgets import (QToolBar, QFrame, QToolButton, QVBoxLayout, QSizePolicy, QDockWidget, QInputDialog, QFileDialog, QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox,
                                QPlainTextEdit, QPushButton, QStackedWidget, QTabWidget, QTextEdit, QWidget, QApplication)
 
 from .canvas import GraphScene, GraphView
@@ -14,7 +14,16 @@ from .config import DEFAULTS, GRAPHF, STARTF, decomp_ok, load_catalog, load_conf
 from .cppimport import import_cpp
 from .library_dialog import LibraryDialog
 from .prefs_dialog import PrefsDialog
-from .theme import apply_theme
+from .theme import ACCENTS, C, PLUGIN_THEMES, apply_theme, set_theme, theme_choices
+from .plugins import MANAGER
+from .plugin_dialog import PluginExplorer
+from .plugfn_dialog import PluginFunctionDialog
+from .help_dialog import HelpDialog, builtin_topics
+from . import basepatch_dialog as BD
+from . import plugnodes as PN
+from .shortcuts_dialog import ShortcutsDialog
+from .icons import bind, icon
+from . import icons
 from .function_dialog import FunctionDialog
 from .group_dialog import GroupDialog
 from .findbar import FindBar
@@ -42,13 +51,18 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.cfg, self.graph = load_config(), Graph(); self.graph.set_catalog(load_catalog()); self.graph.overrides = self.cfg['ret_overrides']; self.graph.favorites = self.cfg['favorites']; self.hl_map, self.file = {}, None; self.hist, self.hi = [], -1; self.out_collapsed, self.out_h = False, 300
+        if not MANAGER.plugins: MANAGER.load_all(self.cfg.get('plugins_disabled', []), enabled=self.cfg.get('plugins_enabled', []), data=self.cfg.setdefault('plugin_data', {}))
+        MANAGER.window = self; MANAGER.data = self.cfg.setdefault('plugin_data', {})
         self.setWindowTitle(f'Odyssey Node Editor v{__version__}'); self.setWindowIcon(app_icon()); self.resize(1500, 920)
-        self.scene = GraphScene(self.graph); self.view = GraphView(self.scene); self.view.setFocusPolicy(Qt.StrongFocus); self.setCentralWidget(self.view)
+        self.scene = GraphScene(self.graph); self.view = GraphView(self.scene); self.view.setFocusPolicy(Qt.StrongFocus)
+        box = QWidget(); bl = QVBoxLayout(box); bl.setContentsMargins(0, 0, 0, 0); bl.setSpacing(0); self.gbar = QFrame(); self.gbar.setObjectName('gbar'); bl.addWidget(self.gbar); bl.addWidget(self.view, 1); self.setCentralWidget(box)
         self.runner = BuildRunner(); self.snap_t = QTimer(self, singleShot=True, interval=400); self.snap_t.timeout.connect(self.snapshot)
         self._docks(); self._actions(); self._wire(); self._load_start(); self.apply_prefs(); self.pal.set_library(library.entries())
-        self.tick = QTimer(self); self.tick.timeout.connect(self._status); self.tick.start(500)
+        self.tick = QTimer(self); self.tick.timeout.connect(self._status); self.tick.start(500); self._status()
         s = QSettings('OdysseyNodes', 'OdysseyNodes')
         if s.value('geom'): self.restoreGeometry(s.value('geom')); self.restoreState(s.value('state'))
+        for t in self.findChildren(QToolBar):  # a window toolbar left over from an older layout
+            if t is not self.gbar: t.hide(); t.deleteLater()
 
     # ---------- construction ----------
     def _docks(self):
@@ -57,16 +71,17 @@ class MainWindow(QMainWindow):
             d = QDockWidget(title, self); d.setObjectName(name); d.setWidget(w); d.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable); self.addDockWidget(area, d)
         self.pal.setMinimumWidth(240); self.insp.setMinimumWidth(340)
         self.tabs = QTabWidget(); self.code = CodeEdit(); self.code.setObjectName('code'); self.code.setReadOnly(True); self.code.setLineWrapMode(QPlainTextEdit.NoWrap)
-        CppHighlighter(self.code.document())
+        self.hlt = CppHighlighter(self.code.document())
         self.incs = QPlainTextEdit(); self.incs.setObjectName('code'); self.incs.setPlainText(DEFAULT_INC)
         self.probs = QListWidget(); self.log = QPlainTextEdit(); self.log.setObjectName('log'); self.log.setReadOnly(True); self.log.setPlainText('No build started yet.')
         self.ryu = RyujinxPanel(self); self.after_build = None
         for w, t in ((self.code, 'C++ code'), (self.incs, 'Includes'), (self.probs, 'Problems'), (self.log, 'Build'), (self.ryu, 'Ryujinx')): self.tabs.addTab(w, t)
         corner = QWidget(); h = QHBoxLayout(corner); h.setContentsMargins(0, 0, 6, 0)
         self.bSaveLog = QPushButton('Save log as…'); self.bCopyLog, self.bCopyErr = QPushButton('Copy log'), QPushButton('Copy errors'); self.bCopyLog.setToolTip('Copy the whole build console'); self.bCopyErr.setToolTip('Copy only the error / warning lines of the console')
-        self.bRepair = QPushButton('🛠 Repair base'); self.bRepair.setToolTip('Delete the build folder and run cmake again (fixes a broken exlaunch build setup)')
-        self.bWrite, self.bBuild, self.bCopy, self.bSaveCpp, self.bFold = QPushButton('Write to project'), QPushButton('▶ Compile'), QPushButton('Copy'), QPushButton('Save as…'), QPushButton('▾')
-        self.bBuild.setObjectName('pri'); self.bFold.setToolTip('Collapse / expand the output panel (Ctrl+J)'); self.bFold.setFixedWidth(34)
+        self.bRepair = QPushButton('Repair base'); self.bRepair.setToolTip('Delete the build folder and run cmake again (fixes a broken exlaunch build setup)')
+        self.bWrite, self.bBuild, self.bCopy, self.bSaveCpp, self.bFold = QPushButton('Write to project'), QPushButton('Compile'), QPushButton('Copy'), QPushButton('Save as…'), QPushButton()
+        self.bBuild.setObjectName('pri'); self.build_state(False); self.fold_icon(); bind(self.bWrite, 'write', size=16); bind(self.bCopy, 'copy', size=16); bind(self.bSaveCpp, 'save', size=16); bind(self.bRepair, 'wrench', size=16); bind(self.bCopyLog, 'copy', size=16); bind(self.bCopyErr, 'copy', size=16); bind(self.bSaveLog, 'save', size=16)
+        self.bFold.setToolTip('Collapse / expand the output panel (Ctrl+J)'); self.bFold.setFixedWidth(34)
         for b in (self.bCopyErr, self.bCopyLog, self.bSaveLog, self.bRepair, self.bWrite, self.bBuild, self.bCopy, self.bSaveCpp, self.bFold): h.addWidget(b)
         self.tabs.setCornerWidget(corner, Qt.TopRightCorner); self.stack = self.tabs.findChild(QStackedWidget)
         self.dock_out = QDockWidget('Output', self); self.dock_out.setObjectName('dOut'); self.dock_out.setTitleBarWidget(QWidget()); self.dock_out.setWidget(self.tabs)
@@ -75,6 +90,7 @@ class MainWindow(QMainWindow):
         self.zoomL, self.cntL, self.bst = QLabel(), QLabel(), QLabel()
         for b in (self.zoomL, self.cntL): b.setContentsMargins(8, 0, 8, 0); self.statusBar().addPermanentWidget(b)
         self.bst.setContentsMargins(8, 0, 8, 0); self.statusBar().addWidget(self.bst)
+        self.madeL = QLabel('Made by <b>WibiDev</b>'); self.madeL.setContentsMargins(8, 0, 8, 0); self.statusBar().insertWidget(0, self.madeL)
 
     def _act(self, text, fn, key=None, view_only=False):
         a = QAction(text, self); a.triggered.connect(lambda _=False: fn())
@@ -90,11 +106,15 @@ class MainWindow(QMainWindow):
         self.aAll = self._act('Select all', lambda: [i.setSelected(True) for i in self.scene.node_items.values()], 'Ctrl+A', True)
         self.aBrowse = self._act('Add game function…', lambda: self.browse(None), 'Ctrl+Shift+F')
         self.aFind = self._act('Find in the graph…', lambda: self.find(), 'Ctrl+F')
+        self.aPlugFn = self._act('Add plugin function…', lambda: self.add_plugin_function(None), 'Ctrl+Shift+K')
         self.aFit, self.aZin, self.aZout = self._act('Fit view', self.view.fit, 'F'), self._act('Zoom in', lambda: self.view.zoom_by(1.2), 'Ctrl++'), self._act('Zoom out', lambda: self.view.zoom_by(1 / 1.2), 'Ctrl+-')
         self.aFold = self._act('Show / hide output panel', self.toggle_output, 'Ctrl+J')
         self.aCfg, self.aAbout, self.aQuit = self._act('Settings (project, build, catalog)…', self.configure, 'Ctrl+Shift+,'), self._act('About / credits', self.about), self._act('Quit', self.close, 'Ctrl+Q')
+        self.aHelp = self._act('Tutorials…', lambda: self.open_help(), 'F1'); self.aTour = self._act('Interface tour…', self.start_tour)
         self.aPrefs = self._act('Preferences…', self.preferences, 'Ctrl+,')
-        self.aClear = self._act('Clear the graph…', self.clear_graph)
+        self.aPlugins, self.aShortcuts = self._act('Plugin explorer…', self.open_plugins, 'Ctrl+Shift+P'), self._act('Keyboard shortcuts…', self.edit_shortcuts)
+        self.aPlugDir = self._act('Open the plugins folder', lambda: PluginExplorer.open_dir(__import__('odyssey.plugins', fromlist=['USER_DIR']).USER_DIR))
+        self.aClear = self._act('Clear', self.clear_graph)
         self.aImport = self._act('Import C++ file…', self.import_cpp_file, 'Ctrl+I')
         self.aSaveStart, self.aClearStart = self._act('Save as startup graph', self.save_startup), self._act('Forget the startup graph', self.clear_startup)
         self.aGroup = self._act('Group selected nodes', self.group_selected, 'Ctrl+G', True); self.aUngroup = self._act('Remove selected nodes from their group', self.ungroup_selected, 'Ctrl+Shift+G', True)
@@ -102,17 +122,167 @@ class MainWindow(QMainWindow):
         self.aRepair = self._act('Repair exlaunch base (rebuild cmake)…', self.repair_base)
         self.aLibSave, self.aLibOpen = self._act('Save selection to library…', self.save_to_library), self._act('Open the library…', self.open_library)
         mb = self.menuBar()
-        for title, acts in (('File', [self.aNew, self.aOpen, self.aSave, None, self.aImport, None, self.aSaveStart, self.aClearStart, None, self.aWrite, None, self.aQuit]),
-                            ('Edit', [self.aUndo, self.aRedo, None, self.aClear, self.aFind, self.aBrowse, self.aDup, self.aDel, self.aAll, None, self.aGroup, self.aUngroup, self.aNote, self.aArrange]),
+        for title, acts in (('File', [self.aNew, 'TPL', self.aOpen, self.aSave, None, self.aImport, None, self.aSaveStart, self.aClearStart, None, self.aWrite, None, self.aQuit]),
+                            ('Edit', [self.aUndo, self.aRedo, None, self.aClear, self.aFind, self.aBrowse, self.aPlugFn, self.aDup, self.aDel, self.aAll, None, self.aGroup, self.aUngroup, self.aNote, self.aArrange]),
                             ('Library', [self.aLibSave, self.aLibOpen, 'LIB']),
-                            ('View', [self.aFit, self.aZin, self.aZout, None, self.aFold]), ('Tools', [self.aBuild, self.aRepair, self.aCfg, self.aPrefs]), ('Help', [self.aAbout])):
+                            ('View', [self.aFit, self.aZin, self.aZout, None, self.aFold]), ('Tools', [self.aBuild, self.aRepair, self.aCfg, self.aPrefs, self.aShortcuts]), ('Plugins', [self.aPlugins, self.aPlugDir]), ('Help', [self.aHelp, self.aTour, self.aAbout])):
             m = mb.addMenu(title)
             for a in acts:
                 if a is None: m.addSeparator()
+                elif a == 'TPL': self.tplMenu = m.addMenu('New from template'); self.tplMenu.aboutToShow.connect(self.fill_template_menu)
                 elif a == 'LIB': m.addSeparator(); self.libMenu = m.addMenu('Insert from library'); self.libMenu.aboutToShow.connect(self.fill_lib_menu)
                 else: m.addAction(a)
-        tb = self.addToolBar('Main'); tb.setObjectName('tb'); tb.setMovable(False)
-        for a in (self.aNew, self.aOpen, self.aSave, None, self.aUndo, self.aRedo, None, self.aBrowse, self.aGroup, self.aNote, self.aFit, self.aClear, None, self.aWrite, self.aBuild, None, self.aLibOpen, self.aPrefs): tb.addSeparator() if a is None else tb.addAction(a)
+        for a, nm in ((self.aNew, 'new'), (self.aOpen, 'open'), (self.aSave, 'save'), (self.aUndo, 'undo'), (self.aRedo, 'redo'), (self.aBrowse, 'library'), (self.aPlugFn, 'func'), (self.aFind, 'search'), (self.aGroup, 'group'), (self.aNote, 'note'), (self.aFit, 'fit'),
+                      (self.aClear, 'trash'), (self.aLibOpen, 'group'), (self.aPrefs, 'settings'), (self.aWrite, 'write'), (self.aBuild, 'play_fill'), (self.aCfg, 'settings'), (self.aRepair, 'wrench'), (self.aAbout, 'help'), (self.aHelp, 'help'), (self.aPlugins, 'plus'), (self.aShortcuts, 'settings'), (self.aPlugDir, 'open')): bind(a, nm, size=20)
+        # graph icon bar: plain buttons in three groups (left / centre / right), no overflow chevron
+        self.tips = tips = {self.aClear: 'Clear', self.aBrowse: 'Open the catalog', self.aFind: 'Find in graph'}
+        def group(*acts):
+            f = QWidget(); l = QHBoxLayout(f); l.setContentsMargins(0, 0, 0, 0); l.setSpacing(4)
+            for a in acts:
+                if a is None:
+                    v = QFrame(); v.setFrameShape(QFrame.VLine); v.setObjectName('gsep'); l.addSpacing(4); l.addWidget(v); l.addSpacing(4); continue
+                a.setToolTip(tips.get(a, a.text().replace('…', '')) + (f"  ({a.shortcut().toString()})" if not a.shortcut().isEmpty() else ''))
+                b = QToolButton(); b.setDefaultAction(a); b.setIconSize(QSize(22, 22)); b.setAutoRaise(True)
+                b.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if a is self.aClear else Qt.ToolButtonIconOnly)
+                b.setFixedSize(38 if a is not self.aClear else b.fontMetrics().horizontalAdvance(a.text()) + 22 + 40, 36); l.addWidget(b)
+            return f
+        gl, gc, gr = group(self.aNew, self.aOpen, self.aSave, None, self.aUndo, self.aRedo), group(self.aClear, self.aFit, self.aFind), group(self.aBrowse, self.aPrefs)
+        bar = QHBoxLayout(self.gbar); bar.setContentsMargins(8, 4, 8, 4); bar.setSpacing(0)
+        bar.addWidget(gl); bar.addStretch(1); bar.addWidget(gc); bar.addStretch(1); bar.addWidget(gr)
+        wd = max(gl.sizeHint().width(), gr.sizeHint().width()); gl.setMinimumWidth(wd); gr.setMinimumWidth(wd)  # centre group stays centred
+        gr.layout().setAlignment(Qt.AlignRight)
+        vm = [m for m in mb.findChildren(QMenu) if m.title() == 'View'][0]; vm.addSeparator()
+        self.lookMenu = vm.addMenu(icon('palette', size=16), 'Theme'); self.build_theme_menu(); self.build_plugin_menu(); self.build_help_menu(); self.init_shortcuts()
+
+    def build_theme_menu(self):
+        """View > Theme: built-in themes + the ones added by plugins; accent colors."""
+        self.lookMenu.clear(); self.lookActs = {}; grp = QActionGroup(self); grp.setExclusive(True)
+        for key, lab, base in theme_choices():
+            a = self.lookMenu.addAction(icon('moon' if base == 'dark' else 'sun', size=16), lab); a.setCheckable(True); grp.addAction(a); a.triggered.connect(lambda _=False, m=key: self.set_look(mode=m)); self.lookActs[key] = a
+        self.lookMenu.addSeparator(); self.accentMenu = self.lookMenu.addMenu('Accent color'); self.accentActs = {}; ag = QActionGroup(self); ag.setExclusive(True)
+        for nm in ('Theme', *ACCENTS):
+            a = self.accentMenu.addAction('Theme default' if nm == 'Theme' else nm); a.setCheckable(True); ag.addAction(a); a.triggered.connect(lambda _=False, n=nm: self.set_look(accent=n)); self.accentActs[nm] = a
+        self.sync_look_menu()
+
+    def theme_accent(self, name):
+        t = PLUGIN_THEMES.get(self.cfg.get('pref_theme', 'dark')); return ACCENTS.get(name) or (t['accent'] if t and t['accent'] else ACCENTS['Red'])
+
+    # ---------- plugins ----------
+    def build_plugin_menu(self):
+        """Plugins menu: explorer, then the actions plugins added with api.add_action, then the folder shortcut."""
+        m = [x for x in self.menuBar().findChildren(QMenu) if x.title() == 'Plugins'][0]; m.clear(); m.addAction(self.aPlugins)
+        for old in getattr(self, 'plugin_actions', []): self.removeAction(old)
+        self.plugin_actions = []; first = True
+        for pl in MANAGER.plugins:
+            if not pl.enabled: continue
+            for i, (label, fn, key) in enumerate(pl.actions):
+                if first: m.addSeparator(); first = False
+                a = QAction(f'{label}', self); a.setObjectName(f'plugin.{pl.id}.{i}'); a.setStatusTip(f'{pl.title} (plugin)'); a.triggered.connect(lambda _=False, fn=fn: self.run_plugin_action(fn))
+                if key: a.setShortcut(QKeySequence(key))
+                m.addAction(a); self.plugin_actions.append(a)
+        m.addSeparator(); m.addAction(self.aPlugDir)
+
+    # ---------- help ----------
+    def help_topics(self):
+        """[(section, source, title, path, buttons)]: the editor's tutorials, then the pages of the enabled plugins."""
+        return builtin_topics() + [('Plugin tutorials', pl.title, title, path, btn) for pl in MANAGER.plugins if pl.enabled for title, path, btn in pl.help]
+
+    def build_help_menu(self):
+        """Help menu: Tutorials (editor + plugins, in one window), Interface tour, About."""
+        m = [x for x in self.menuBar().findChildren(QMenu) if x.title() == 'Help'][0]; m.clear(); m.addAction(self.aHelp); m.addAction(self.aTour); m.addSeparator(); m.addAction(self.aAbout)
+
+    def open_help(self, start=0):
+        topics = self.help_topics()
+        if not topics: QMessageBox.information(self, 'Tutorials', 'No tutorial found (the tutorials folder is missing).'); return
+        d = getattr(self, '_help', None)
+        try:
+            if d is not None and d.isVisible(): d.raise_(); d.activateWindow(); d.pick(start); return
+        except RuntimeError: pass
+        d = self._help = HelpDialog(topics, self, start); d.run.connect(self.run_help_action); d.show()
+
+    def open_help_page(self, title):
+        t = self.help_topics(); i = next((k for k, x in enumerate(t) if x[2] == title), 0); self.open_help(i)
+
+    # ---------- interface tour ----------
+    def start_tour(self, first_run=False):
+        from .tour import Tour
+        t = getattr(self, '_tour', None)
+        try:
+            if t is not None and t.isVisible(): return
+        except RuntimeError: pass
+        self._tour = Tour(self); self._tour.finished.connect(self.tour_finished); self._tour.start()
+
+    def tour_finished(self, completed):
+        """Completed or skipped: never shown again at startup. Closing the program in the middle leaves it unmarked, so it comes back."""
+        self.cfg['tour_done'] = True; save_config(self.cfg)
+        if completed and getattr(self._tour, 'open_tut', False): QTimer.singleShot(0, lambda: self.open_help())
+
+    def maybe_first_tour(self):
+        if not self.cfg.get('tour_done'): QTimer.singleShot(500, self.start_tour)
+
+    def run_help_action(self, action):
+        kind, _, arg = action.partition(':')
+        if kind == 'template':
+            for pl in MANAGER.plugins:
+                if pl.enabled:
+                    for name, path, desc in pl.templates:
+                        if name == arg: self.new_from_template(path); return
+            QMessageBox.information(self, 'Help', f'The template "{arg}" is not available (is its plugin enabled?).')
+        elif kind == 'browser': self.add_plugin_function(None, arg)
+        elif kind == 'base':
+            pl = MANAGER.get(arg)
+            if pl and pl.enabled and pl.base: BD.BaseDialog(self, pl).exec()
+            else: QMessageBox.information(self, 'Help', 'Enable the plugin first (Plugins > Plugin explorer).')
+        elif kind == 'plugins': self.open_plugins()
+        elif kind == 'tour': self.start_tour()
+        elif kind == 'settings': self.configure()
+        elif kind == 'open' and arg: self.open_help_page(arg)
+
+    def run_plugin_action(self, fn):
+        try: fn(self)
+        except Exception as e: QMessageBox.warning(self, 'Plugin', f'{type(e).__name__}: {e}')
+
+    def reload_plugins(self):
+        MANAGER.load_all(self.cfg.get('plugins_disabled', []), enabled=self.cfg.get('plugins_enabled', []), window=self, data=self.cfg.setdefault('plugin_data', {}))
+
+    def plugins_changed(self):
+        """After the explorer reloaded the plugins: new palette, themes, menus, nodes of the open graph."""
+        save_config(self.cfg); self.pal.rebuild(); self.pal.set_library(library.entries()); self._look = None; self.build_theme_menu(); self.build_plugin_menu(); self.build_help_menu(); self.init_shortcuts()
+        self.apply_prefs(); self.scene.rebuild(); self.refresh_code(); self.refresh_problems() if hasattr(self, 'refresh_problems') else None
+
+    def open_plugins(self):
+        d = PluginExplorer(self.cfg, self.reload_plugins, self); d.changed.connect(self.plugins_changed); d.exec(); save_config(self.cfg)
+
+    # ---------- keyboard shortcuts ----------
+    def registry(self):
+        """{id: QAction} of every command that can get a shortcut (menu commands + plugin actions)."""
+        out = {k: v for k, v in vars(self).items() if k.startswith('a') and isinstance(v, QAction) and v.text().strip() and k != 'aPlugDir'}
+        for a in getattr(self, 'plugin_actions', []): out[a.objectName()] = a
+        return out
+
+    def init_shortcuts(self):
+        """Remember the built-in shortcuts, then apply the ones the user changed."""
+        if not hasattr(self, 'sc_default'): self.sc_default = {}
+        for k, a in self.registry().items(): self.sc_default.setdefault(k, a.shortcut().toString(QKeySequence.PortableText))
+        self.apply_shortcuts()
+
+    def apply_shortcuts(self):
+        mine = self.cfg.get('shortcuts', {})
+        for k, a in self.registry().items(): a.setShortcut(QKeySequence(mine.get(k, self.sc_default.get(k, '')), QKeySequence.PortableText))
+        self.refresh_tips()
+
+    def sk(self, a):
+        s = a.shortcut().toString(QKeySequence.NativeText); return f'  ({s})' if s else ''
+
+    def refresh_tips(self):
+        tips = getattr(self, 'tips', {})
+        for a in (self.aNew, self.aOpen, self.aSave, self.aUndo, self.aRedo, self.aClear, self.aFit, self.aFind, self.aBrowse, self.aPrefs):
+            a.setToolTip(tips.get(a, a.text().replace('…', '')) + self.sk(a))
+
+    def edit_shortcuts(self):
+        reg = self.registry(); mine = self.cfg.get('shortcuts', {}); ent = [(k, a.text().replace('&', '').replace('…', '') + (' (plugin)' if k.startswith('plugin.') else ''), self.sc_default.get(k, ''), mine.get(k, self.sc_default.get(k, ''))) for k, a in reg.items()]
+        ent.sort(key=lambda e: e[1].lower()); d = ShortcutsDialog(ent, self)
+        if d.exec(): self.cfg['shortcuts'] = d.result(); save_config(self.cfg); self.apply_shortcuts(); self.statusBar().showMessage('Keyboard shortcuts saved', 3000)
 
     def _wire(self):
         s = self.scene; s.changed.connect(self.on_changed); s.moved.connect(lambda: self.snap_t.start()); s.picked.connect(self.insp.show_node)
@@ -122,7 +292,7 @@ class MainWindow(QMainWindow):
         self.insp.changed.connect(self.field_changed); self.insp.valuechanged.connect(self.value_changed); self.insp.action.connect(self.inspector_action)
         s.group_edit.connect(self.rename_group); s.note_edit.connect(self.edit_note); s.request.connect(lambda k, _: self.group_selected() if k == 'group' else None); s.picked.connect(lambda nid: self.highlight(nid, True))
         self.pal.add_lib.connect(lambda p: self.insert_lib(p, None));
-        self.pal.add_pre.connect(lambda n: self.add_pre(n, None)); self.pal.browse.connect(lambda: self.browse(None)); self.view.dropped.connect(self.dropped)
+        self.pal.add_pre.connect(lambda n: self.add_pre(n, None)); self.pal.browse.connect(lambda: self.browse(None)); self.pal.plugfn.connect(lambda: self.add_plugin_function(None)); self.view.dropped.connect(self.dropped)
         self.incs.textChanged.connect(self.includes_changed); self.probs.itemDoubleClicked.connect(self.goto_problem)
         self.bWrite.clicked.connect(self.write_project); self.bBuild.clicked.connect(self.build); self.bFold.clicked.connect(lambda: self.toggle_output())
         self.bCopy.clicked.connect(lambda: (QGuiApplication.clipboard().setText(self.code.toPlainText()), self.statusBar().showMessage('Code copied', 3000)))
@@ -138,12 +308,22 @@ class MainWindow(QMainWindow):
         except Exception: self.graph.clear(); sample(self.graph)
         self.incs.blockSignals(True); self.incs.setPlainText(self.graph.inc); self.incs.blockSignals(False)
         self.scene.rebuild(keep=[]); self.refresh_code(); self.snapshot(); QTimer.singleShot(0, self.view.fit)
-        if not load_catalog() or not decomp_ok(self.cfg): QTimer.singleShot(200, self.configure)
+        QTimer.singleShot(200, self._first_run)
+
+    def _first_run(self):
+        """After the window is shown: the setup dialog when the catalog is missing, then the interface tour the first time."""
+        if not load_catalog() or not decomp_ok(self.cfg): self.configure()
+        self.maybe_first_tour()
 
     # ---------- state ----------
     def _status(self):
-        n = len(self.graph.cat); self.pill.setText(f'{n} functions' if n else '⚠ catalog missing'); self.pill.setStyleSheet('' if n else 'color:#ef5b5b')
+        n = len(self.graph.cat); self.pill.setText(f'{n} functions' if n else 'catalog missing'); self.pill.setStyleSheet('' if n else f"color:{C['ko']}")
         self.zoomL.setText(f'{self.view.zoom_percent()} %'); self.cntL.setText(f'{len(self.graph.nodes)} nodes · {len(self.graph.edges)} links')
+
+    def build_state(self, running):
+        self._building = running; self.bBuild.setText(' Stop' if running else ' Compile'); self.bBuild.setIcon(icon('stop_fill' if running else 'play_fill', '#ffffff', 16))
+
+    def fold_icon(self): self.bFold.setIcon(icon('up' if getattr(self, 'out_collapsed', False) else 'down', size=16))
 
     def toggle_output(self, collapse=None):
         collapse = (not self.out_collapsed) if collapse is None else collapse
@@ -153,7 +333,7 @@ class MainWindow(QMainWindow):
             h = max(self.tabs.tabBar().sizeHint().height(), self.tabs.cornerWidget().sizeHint().height()) + 10; self.dock_out.setMinimumHeight(h); self.dock_out.setMaximumHeight(h)
         else:
             self.stack.show(); self.dock_out.setMinimumHeight(0); self.dock_out.setMaximumHeight(BIG); self.resizeDocks([self.dock_out], [max(self.out_h, 220)], Qt.Vertical)
-        self.out_collapsed = collapse; self.bFold.setText('▴' if collapse else '▾')
+        self.out_collapsed = collapse; self.fold_icon()
 
     def refresh_code(self):
         try: txt, self.hl_map = self.graph.gen_map()
@@ -161,7 +341,7 @@ class MainWindow(QMainWindow):
         sb = self.code.verticalScrollBar(); v = sb.value(); self.code.setPlainText(txt); sb.setValue(v); self.highlight(self.insp.nid, False)
         self.probs.clear()
         for lvl, nid, msg in self.graph.problems():
-            it = QListWidgetItem({'err': '✖ ', 'warn': '⚠ '}.get(lvl, 'ℹ ') + msg); it.setData(Qt.UserRole, nid); it.setForeground(QColor({'err': '#ef5b5b', 'warn': '#e6b673'}.get(lvl, '#6aa7ff'))); self.probs.addItem(it)
+            col = {'err': C['ko'], 'warn': '#e6a23c'}.get(lvl, '#4f8cf0'); it = QListWidgetItem(icon({'err': 'error', 'warn': 'warn'}.get(lvl, 'info'), col, 16), msg); it.setData(Qt.UserRole, nid); self.probs.addItem(it)
         self.tabs.setTabText(2, f'Problems ({self.probs.count()})' if self.probs.count() else 'Problems')
 
     def on_changed(self):
@@ -204,6 +384,39 @@ class MainWindow(QMainWindow):
         ok = dlg.exec(); save_config(self.cfg)  # favorites are saved even if the window is cancelled
         if ok: t, f, d = dlg.result(); return self._place(t, f, pos, d)
 
+    def add_plugin_function(self, pos=None, plugin=''):
+        """Plugin function browser (catalogs of the enabled plugins); every function chosen becomes a node."""
+        if not PN.CATALOG:
+            if QMessageBox.question(self, 'Plugin functions', 'No enabled plugin offers a function catalog.\n\nThe "Dear ImGui" plugin is one: it is disabled by default. Open the Plugin explorer to enable it?') == QMessageBox.Yes: self.open_plugins()
+            return
+        self._plugfn_nodes = []; dlg = PluginFunctionDialog(self, plugin); dlg.chosen.connect(lambda pid: self._place_plugin_fn(pid, pos)); dlg.exec()
+        return self._plugfn_nodes[0] if self._plugfn_nodes else None
+
+    def _place_plugin_fn(self, pid, pos):
+        d = PN.catalog_def(pid)
+        if d:
+            n = self._place('plug', PN.defaults(d), pos); getattr(self, '_plugfn_nodes', []).append(n)
+
+    def fill_template_menu(self):
+        """File > New from template: the templates of the enabled plugins."""
+        self.tplMenu.clear(); n = 0
+        for pl in MANAGER.plugins:
+            if not pl.enabled: continue
+            for name, path, desc in pl.templates:
+                a = self.tplMenu.addAction(f'{name}  ({pl.title})', lambda _=False, p=path: self.new_from_template(p)); a.setToolTip(desc); a.setStatusTip(desc); n += 1
+        if not n: self.tplMenu.addAction('(no template: enable a plugin that has some, like Dear ImGui)').setEnabled(False)
+
+    def new_from_template(self, path):
+        if (self.graph.nodes or self.graph.notes) and QMessageBox.question(self, 'New from template', 'Replace the current graph with this template?\n(Ctrl+Z brings your graph back.)') != QMessageBox.Yes: return
+        try: self.load_state(Path(path).read_text('utf-8'))
+        except Exception as e: QMessageBox.critical(self, 'Template', f'Cannot load the template:\n{e}'); return
+        self.file = None; self.snapshot(); self.view.fit(); self.statusBar().showMessage('Template loaded: use Write to project (Ctrl+E) or Compile (F5)', 6000)
+        for pl in MANAGER.plugins:
+            if pl.enabled and pl.base and any(Path(path) == t[1] for t in pl.templates): BD.offer(self, pl, 'This template uses it.')
+
+    def offer_base(self, pl):
+        return BD.offer(self, pl, f'"{pl.title}" is now enabled.')
+
     def edit_node(self, nid):
         n = self.graph.nodes.get(nid)
         if not n: return
@@ -244,6 +457,7 @@ class MainWindow(QMainWindow):
             sp = scratch.spec(scratch.add(t, dict(f), 0, 0)); pins = sp[1] if d == 'o' else sp[2]
             if any((p.type == E) == ex for p in pins): cats.setdefault(cat, []).append(name)
         m = QMenu(self); m.addAction('Game function…', lambda: self._drop_make(nid, pid, d, pos, None))
+        if PN.CATALOG: m.addAction('Plugin function…', lambda: self._drop_make(nid, pid, d, pos, '@plugfn'))
         for cat in CATEGORIES:
             if cat in cats:
                 sm = m.addMenu(cat)
@@ -252,7 +466,7 @@ class MainWindow(QMainWindow):
 
     def _drop_make(self, nid, pid, d, pos, name):
         g = self.graph; src = g.pin_type(nid, pid, d); where = pos if d == 'o' else QPointF(pos.x() - 220, pos.y())
-        n = self.browse(where) if name is None else self.add_pre(name, where)
+        n = self.browse(where) if name is None else self.add_plugin_function(where) if name == '@plugfn' else self.add_pre(name, where)
         if n is None or nid not in g.nodes: return
         pins = g.spec(n)[1] if d == 'o' else g.spec(n)[2]; ok = [p for p in pins if (p.type == E) == (src == E)]
         if not ok: return
@@ -264,8 +478,10 @@ class MainWindow(QMainWindow):
             self.scene.commit(keep=[n.id])
 
     def empty_menu(self, pos, screen):
-        m = QMenu(self); m.addAction('Game function…  (Ctrl+Shift+F)', lambda: self.browse(pos)); m.addAction('Find in the graph…  (Ctrl+F)', lambda: self.find()); m.addAction('Comment here…', lambda: self.add_note(pos))
-        if self.scene.selected_ids(): m.addAction('Group selected nodes  (Ctrl+G)', self.group_selected)
+        m = QMenu(self); m.addAction('Game function…' + self.sk(self.aBrowse), lambda: self.browse(pos))
+        if PN.CATALOG: m.addAction('Plugin function…' + self.sk(self.aPlugFn), lambda: self.add_plugin_function(pos))
+        m.addAction('Find in the graph…' + self.sk(self.aFind), lambda: self.find()); m.addAction('Comment here…', lambda: self.add_note(pos))
+        if self.scene.selected_ids(): m.addAction('Group selected nodes' + self.sk(self.aGroup), self.group_selected)
         m.addSeparator()
         for cat, names in GRP.items():
             sm = m.addMenu(cat)
@@ -325,7 +541,7 @@ class MainWindow(QMainWindow):
         if not p: QMessageBox.information(self, 'Write to project', 'Set your exlaunch project in Settings first.'); self.configure(); return False
         if Path(p).suffix.lower() not in ('.cpp', '.hpp', '.h'): QMessageBox.warning(self, 'Write to project', 'The generated file must end in .cpp, .hpp or .h.'); return False
         if not Path(p).parent.is_dir(): QMessageBox.warning(self, 'Write to project', f'Folder not found: {Path(p).parent}'); return False
-        txt = self.code.toPlainText()
+        BD.check_graph(self, self.graph); txt = self.code.toPlainText()
         with open(p, 'w', encoding='utf-8', newline='\n') as f: f.write(txt)
         self.statusBar().showMessage(f'Written: {p} ({len(txt.encode())} bytes)', 5000); return True
 
@@ -341,11 +557,11 @@ class MainWindow(QMainWindow):
         if errs and QMessageBox.question(self, 'Compile', f'The graph has {len(errs)} error(s), for example:\n\n• ' + '\n• '.join(errs[:3]) + '\n\nCompile anyway?') != QMessageBox.Yes: self.tabs.setCurrentWidget(self.probs); return
         self.toggle_output(False); self.tabs.setCurrentWidget(self.log); self.log.clear()
         self.log.appendPlainText('Step 1/2: write the generated code into the project')
-        if not self.write_project(): self.log.appendPlainText('  ✘ could not write the file: nothing was compiled.'); return
-        p = main_cpp_path(self.cfg); self.log.appendPlainText(f'  ✔ {p}  ({len(self.code.toPlainText().splitlines())} lines)')
+        if not self.write_project(): self.log.appendPlainText('  could not write the file: nothing was compiled.'); return
+        p = main_cpp_path(self.cfg); self.log.appendPlainText(f'  {p}  ({len(self.code.toPlainText().splitlines())} lines)')
         where = f'{env}{" · " + self.cfg.get("wsl_distro", "") if env == "wsl" and self.cfg.get("wsl_distro") else ""}'
         self.log.appendPlainText(f'Step 2/2: build   [{where}]  in {cwd or "(current folder)"}\n$ {self.cfg["build_cmd"]}\n'); self.t0 = time.monotonic()
-        self.bBuild.setText('■ Stop'); self.bst.setText('Build running…'); self.bst.setStyleSheet(''); self.runner.start(self.cfg['build_cmd'], cwd, env, self.cfg.get('wsl_distro', ''))
+        self.build_state(True); self.bst.setText('Build running…'); self.bst.setStyleSheet(''); self.runner.start(self.cfg['build_cmd'], cwd, env, self.cfg.get('wsl_distro', ''))
 
     def suggest_build_cmd(self):
         """Still on the default command although the project has a Makefile (the exlaunch template): offer 'make' once."""
@@ -386,7 +602,7 @@ class MainWindow(QMainWindow):
         cm = 'cmake -B build -G "Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake'
         cmd = f'(if exist build rmdir /s /q build) & {cm}' if env == 'windows' or (env == '' and os.name == 'nt') else f'rm -rf build && {cm}'
         self.toggle_output(False); self.tabs.setCurrentWidget(self.log); self.log.clear(); self.log.appendPlainText(f'[repair · {env}] $ {cmd}\n')
-        self.bBuild.setText('■ Stop'); self.bst.setText('Repair running…'); self.bst.setStyleSheet(''); self.runner.start(cmd, cwd, env, self.cfg.get('wsl_distro', ''))
+        self.build_state(True); self.bst.setText('Repair running…'); self.bst.setStyleSheet(''); self.runner.start(cmd, cwd, env, self.cfg.get('wsl_distro', ''))
 
     def build_then(self, cb):
         """Compile, then call cb() only if the build succeeded."""
@@ -413,26 +629,39 @@ class MainWindow(QMainWindow):
         self.log.moveCursor(self.log.textCursor().MoveOperation.End); self.log.insertPlainText(ANSI.sub('', s).replace('\r\n', '\n')); self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
 
     def build_done(self, code):
-        self.bBuild.setText('▶ Compile'); ok = code == 0; self.bst.setText('Build succeeded ✔' if ok else f'Build failed (code {code})'); self.bst.setStyleSheet(f'color:{"#4ecb8a" if ok else "#ef5b5b"}')
+        self.build_state(False); ok = code == 0; self.bst.setText('Build succeeded' if ok else f'Build failed (code {code})'); self.bst.setStyleSheet(f'color:{"#4ecb8a" if ok else "#ef5b5b"}')
         el = time.monotonic() - getattr(self, 't0', time.monotonic()); errs = [l.strip() for l in self.log.toPlainText().splitlines() if re.search(r'\berror\b|undefined reference|\*\*\*', l)]
         if not ok and errs: self.bst.setText(f'Build failed ({len(errs)} error line(s))')
-        self.log.appendPlainText(f'\n{"✔ Build succeeded" if ok else "✘ Build failed (code " + str(code) + ")"} in {el:.1f}s')
+        self.log.appendPlainText(f'\n{"Build succeeded" if ok else "Build failed (code " + str(code) + ")"} in {el:.1f}s')
         if not ok and errs: self.log.appendPlainText('Main errors:\n  ' + '\n  '.join(l[-200:] for l in errs[:5]) + '\n(use "Copy errors" to copy every error line)')
         elif ok: self.log.appendPlainText('Next step: Ryujinx tab > "Install mod and launch".')
         self.statusBar().showMessage(self.bst.text(), 6000)
         cb, self.after_build = self.after_build, None
         if cb and ok: cb()
-        elif cb: self.ryu.say('✘ Build failed: the game was not started.')
+        elif cb: self.ryu.say('Build failed: the game was not started.')
         self.ryu.refresh()
 
     # ---------- preferences ----------
+    def set_look(self, mode=None, accent=None):
+        if mode: self.cfg['pref_theme'] = mode
+        if accent: self.cfg['pref_accent'] = accent
+        save_config(self.cfg); self.apply_prefs()
+
+    def sync_look_menu(self):
+        if hasattr(self, 'lookActs'):
+            cur = self.cfg.get('pref_theme', 'dark'); (self.lookActs.get(cur) or self.lookActs['dark']).setChecked(True); (self.accentActs.get(self.cfg.get('pref_accent', 'Red')) or self.accentActs['Red']).setChecked(True)
+            for nm, a in self.accentActs.items(): pm = QPixmap(14, 14); pm.fill(QColor(self.theme_accent(nm))); a.setIcon(QIcon(pm))
+
     def apply_prefs(self):
         c = self.cfg; qss = f'QPlainTextEdit{{font-size:{int(c["pref_code_size"])}pt}}'
         self.code.setStyleSheet(qss); self.incs.setStyleSheet(qss); self.log.setStyleSheet(qss)
         self.code.setLineWrapMode(QPlainTextEdit.WidgetWidth if c['pref_wrap'] else QPlainTextEdit.NoWrap)
         inst, cst = self.graph.install, self.graph.calls; self.graph.install, self.graph.calls = c.get('pref_install', 'symbol'), c.get('pref_calls', 'direct'); self.scene.autogroup = bool(c.get('pref_autogroup', True)); self.scene.dropmenu = bool(c.get('pref_dropmenu', True)); self.code.set_numbers(c.get('pref_linenumbers', True)); self.scene.links_top = bool(c.get('pref_links_top')); self.scene.apply_z(); self.view.show_grid = bool(c['pref_grid']); self.view.viewport().update(); self.scene.snap = bool(c['pref_snap'])
-        if getattr(self, '_ui_px', None) != int(c['pref_ui_size']):
-            self._ui_px = int(c['pref_ui_size']); apply_theme(QApplication.instance(), self._ui_px)
+        look = (c.get('pref_theme', 'dark'), c.get('pref_accent', 'Red'))
+        if getattr(self, '_ui_px', None) != int(c['pref_ui_size']) or getattr(self, '_look', None) != look:
+            changed = getattr(self, '_look', look) != look; self._ui_px = int(c['pref_ui_size']); self._look = look; set_theme(*look); apply_theme(QApplication.instance(), self._ui_px)
+            if hasattr(self, 'fbar'):  # the theme changed on a running window: icons, code colors, search bar, canvas
+                icons.refresh(); self.build_state(getattr(self, '_building', False)); self.fold_icon(); self.hlt.restyle(); self.fbar.restyle(); self.scene.update(); self.view.viewport().update(); self.refresh_code(); self.sync_look_menu()
         if (inst, cst) != (self.graph.install, self.graph.calls): self.refresh_code()
         self.highlight(self.insp.nid, False)
 
@@ -455,10 +684,14 @@ class MainWindow(QMainWindow):
 
     # ---------- startup graph ----------
     def save_startup(self):
+        had = STARTF.exists(); n = len(self.graph.nodes)
+        if QMessageBox.question(self, 'Startup graph', ('Replace your startup graph with the current graph' if had else 'Use the current graph as your startup graph') + f' ({n} node{"s" if n != 1 else ""})?\n\nFile > New and the startup option will open it.') != QMessageBox.Yes: return
         try: STARTF.write_text(self.graph.to_json(), 'utf-8'); self.statusBar().showMessage('Saved as your startup graph: File > New and the startup option now use it', 6000)
         except Exception as e: QMessageBox.critical(self, 'Startup graph', str(e))
 
     def clear_startup(self):
+        if not STARTF.exists(): self.statusBar().showMessage('There is no startup graph', 4000); return
+        if QMessageBox.question(self, 'Startup graph', 'Forget your startup graph?\n\nFile > New will show the example again.') != QMessageBox.Yes: return
         STARTF.unlink(missing_ok=True); self.statusBar().showMessage('Startup graph removed: File > New shows the example again', 5000)
 
     # ---------- import a C++ file ----------
@@ -553,8 +786,8 @@ class MainWindow(QMainWindow):
     def catalog_ready(self, cat): self.graph.set_catalog(cat); self.scene.rebuild(); self.refresh_code()
 
     def about(self):
-        QMessageBox.about(self, 'Odyssey Node Editor', f'<b>Odyssey Node Editor</b> v{__version__}: a node editor that generates exlaunch C++ (Super Mario Odyssey 1.0.0).<br><br>Credits: OdysseyDecomp (MonsterDruide1 and contributors), exlaunch (shadowninja108), '
-                          'sead and nnheaders (open-ead), Qt for Python (PySide6). Inspired by Unreal Engine Blueprints.<br>Unofficial mod tool, not affiliated with Nintendo.')
+        QMessageBox.about(self, 'Odyssey Node Editor', f'<h3>Made by WibiDev</h3><b>Odyssey Node Editor</b> v{__version__}: a node editor that generates exlaunch C++ (Super Mario Odyssey 1.0.0).<br><br>Credits: OdysseyDecomp (MonsterDruide1 and contributors), exlaunch (shadowninja108), '
+                          'sead and nnheaders (open-ead), SMO-Exlaunch-Base (CraftyBoss) and LunaKit (Amethyst-szs) for the Dear ImGui plugin, Dear ImGui (Omar Cornut), Qt for Python (PySide6), icons drawn after the Lucide style. Inspired by Unreal Engine Blueprints.<br>Unofficial mod tool, not affiliated with Nintendo.')
 
     def closeEvent(self, ev):
         self.snapshot(); self.runner.stop(); s = QSettings('OdysseyNodes', 'OdysseyNodes'); s.setValue('geom', self.saveGeometry()); s.setValue('state', self.saveState()); super().closeEvent(ev)

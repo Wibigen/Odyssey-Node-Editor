@@ -1,0 +1,317 @@
+{
+  "id": "stdio",
+  "title": "Standard I/O",
+  "author": "WibiDev",
+  "version": "1.0.0",
+  "icon": "icon.png",
+  "description": "Text output and input from <cstdio>: printf, puts, snprintf, sscanf and simple file access. Handy for logging from a hook (check that your exlaunch base project provides stdio).",
+  "nodes": [
+    {
+      "id": "printf",
+      "label": "Print (printf)",
+      "description": "Write formatted text to the output. Add arguments in the inspector and match them with %d, %f, %s... in the format.",
+      "template": "printf($format$,arg)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "format",
+          "type": "const char*",
+          "label": "format",
+          "default": "\"hello\\n\""
+        }
+      ],
+      "repeat": {
+        "id": "arg",
+        "type": "",
+        "label": "argument",
+        "min": 0,
+        "max": 6,
+        "default": 0
+      },
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "puts",
+      "label": "Print line (puts)",
+      "description": "Write a text followed by a new line.",
+      "template": "puts($text)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        }
+      ],
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "print_value",
+      "label": "Print a value",
+      "description": "Write \"name = value\" for one value. Pick how the value is shown (%d, %f, %x...).",
+      "template": "printf(\"@label = @fmt\\n\", $value)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "value",
+          "type": "",
+          "label": "value"
+        }
+      ],
+      "fields": [
+        {
+          "key": "label",
+          "label": "Name shown",
+          "kind": "text",
+          "default": "value"
+        },
+        {
+          "key": "fmt",
+          "label": "Show it as",
+          "kind": "choice",
+          "options": [
+            [
+              "%d",
+              "%d  integer"
+            ],
+            [
+              "%u",
+              "%u  unsigned"
+            ],
+            [
+              "%x",
+              "%x  hex"
+            ],
+            [
+              "%f",
+              "%f  float"
+            ],
+            [
+              "%s",
+              "%s  text"
+            ],
+            [
+              "%p",
+              "%p  pointer"
+            ],
+            [
+              "%c",
+              "%c  character"
+            ]
+          ]
+        }
+      ],
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "putchar",
+      "label": "Print character (putchar)",
+      "description": "Write one character.",
+      "template": "putchar($char)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "char",
+          "type": "int",
+          "label": "character",
+          "default": "'a'"
+        }
+      ],
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "fflush",
+      "label": "Flush output",
+      "description": "Send the text written so far to its destination.",
+      "template": "fflush(stdout)",
+      "flow": true,
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "snprintf",
+      "label": "Format into buffer (snprintf)",
+      "description": "Write formatted text into a char buffer (never more than \"size\" bytes). Gives the number of characters it wanted to write.",
+      "template": "snprintf($buffer, $size, $format$,arg)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "buffer",
+          "type": "char*",
+          "label": "buffer"
+        },
+        {
+          "id": "size",
+          "type": "u64",
+          "label": "size",
+          "default": "256"
+        },
+        {
+          "id": "format",
+          "type": "const char*",
+          "label": "format",
+          "default": "\"%d\""
+        }
+      ],
+      "output": {
+        "type": "int",
+        "label": "length"
+      },
+      "repeat": {
+        "id": "arg",
+        "type": "",
+        "label": "argument",
+        "min": 0,
+        "max": 6,
+        "default": 0
+      },
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "sscanf",
+      "label": "Read values from text (sscanf)",
+      "description": "Parse a text with a format. Connect the addresses (&) of the variables to fill. Gives how many values were read.",
+      "template": "sscanf($text, $format$,arg)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text"
+        },
+        {
+          "id": "format",
+          "type": "const char*",
+          "label": "format",
+          "default": "\"%d\""
+        }
+      ],
+      "output": {
+        "type": "int",
+        "label": "values read"
+      },
+      "repeat": {
+        "id": "arg",
+        "type": "void*",
+        "label": "destination",
+        "min": 1,
+        "max": 6,
+        "default": 1
+      },
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "fopen",
+      "label": "Open file (fopen)",
+      "description": "Open a file. Gives a FILE* (null when it failed).",
+      "template": "fopen($path, $mode)",
+      "inputs": [
+        {
+          "id": "path",
+          "type": "const char*",
+          "label": "path",
+          "default": "\"\""
+        },
+        {
+          "id": "mode",
+          "type": "const char*",
+          "label": "mode",
+          "default": "\"r\""
+        }
+      ],
+      "output": {
+        "type": "FILE*",
+        "label": "file"
+      },
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "fclose",
+      "label": "Close file (fclose)",
+      "description": "Close a file opened with fopen.",
+      "template": "fclose($file)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "file",
+          "type": "FILE*",
+          "label": "file"
+        }
+      ],
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "fputs",
+      "label": "Write text to file (fputs)",
+      "description": "Write a text into an open file.",
+      "template": "fputs($text, $file)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "text",
+          "type": "const char*",
+          "label": "text",
+          "default": "\"\""
+        },
+        {
+          "id": "file",
+          "type": "FILE*",
+          "label": "file"
+        }
+      ],
+      "includes": [
+        "<cstdio>"
+      ]
+    },
+    {
+      "id": "fgets",
+      "label": "Read line from file (fgets)",
+      "description": "Read one line (at most size-1 characters) into a buffer. Gives the buffer, or null at the end of the file.",
+      "template": "fgets($buffer, $size, $file)",
+      "flow": true,
+      "inputs": [
+        {
+          "id": "buffer",
+          "type": "char*",
+          "label": "buffer"
+        },
+        {
+          "id": "size",
+          "type": "int",
+          "label": "size",
+          "default": "256"
+        },
+        {
+          "id": "file",
+          "type": "FILE*",
+          "label": "file"
+        }
+      ],
+      "output": {
+        "type": "char*",
+        "label": "line"
+      },
+      "includes": [
+        "<cstdio>"
+      ]
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-# Odyssey Node Editor  (v4.6)
+# Odyssey Node Editor  (v7.6)
 
 A native desktop tool (Python + PySide6, no browser) for building **Super Mario Odyssey 1.0.0 exefs mods** with Blueprint-style nodes.
 It generates [exlaunch](https://github.com/shadowninja108/exlaunch) C++ that compiles against your OdysseyDecomp fork.
@@ -9,6 +9,10 @@ It generates [exlaunch](https://github.com/shadowninja108/exlaunch) C++ that com
 
 ## First start
 The setup dialog asks for your **OdysseyDecomp folder**. The tool reads `data/file_list.yml`, demangles the symbols (needs `c++filt`, found automatically or set in Settings) and builds the function catalog itself (about 17,700 functions). It also asks for your exlaunch project, `main.cpp` path and the build command (default `cmake --build build`).
+
+## Learning the editor
+- **Help > Tutorials…** (F1): 15 short tutorials (start here, project setup, your first mod, the canvas, game functions and hooks, variables and math, flow control, your own functions, pointers, custom code, groups and library, output and building, preferences and shortcuts, plugins, troubleshooting), then the tutorials of enabled plugins in a separate *Plugin tutorials* section. The pages are the Markdown files of `tutorials/` (list in `tutorials/index.json`).
+- **Help > Interface tour…**: a guided presentation of the window. It starts the first time the program is opened; Skip / Esc ends it. Once completed or skipped it does not come back at startup (if you close the program in the middle it does).
 
 ## Using it
 - **Add game function** (Ctrl+F, the red button, or right-click on the canvas): a full window to search functions, see signature / return type / offset / symbol, then choose **Call** or **Hook**. For a call, every argument is either *Connect a node* or a *Fixed value* (number, text, bool, `Vector3` X/Y/Z, any C++ expression). The result can be saved in a variable, or used directly as a value in other blocks. A button next to each function opens it in a GitHub search of OdysseyDecomp. If the catalog says *void* for a function that really returns something, use **Change...** next to the return type (a warning asks you to confirm).
@@ -62,6 +66,22 @@ odyssey/setup_dialog.py, theme.py
 ## Credits
 - [OdysseyDecomp](https://github.com/MonsterDruide1/OdysseyDecomp) by MonsterDruide1 and contributors (symbol and offset data, headers)
 - [exlaunch](https://github.com/shadowninja108/exlaunch) by shadowninja108 (hook framework targeted by the generated code)
+- [SMO-Exlaunch-Base](https://github.com/CraftyBoss/SMO-Exlaunch-Base) by CraftyBoss (GPL-2.0): the ImGui backend for Switch / nvn used by the Dear ImGui plugin; based on [LunaKit](https://github.com/Amethyst-szs/smo-lunakit) by Amethyst-szs (GPL-2.0) and [exlaunch-cmake](https://github.com/EngineLessCC/exlaunch-cmake)
+- [Dear ImGui](https://github.com/ocornut/imgui) by Omar Cornut (MIT)
 - [sead](https://github.com/open-ead/sead) and [nnheaders](https://github.com/open-ead/nnheaders) by open-ead
 - [PySide6 / Qt](https://www.qt.io/qt-for-python), PyInstaller
 - Inspired by Unreal Engine Blueprints
+
+## Plugins and shortcuts (v6)
+* **Plugins > Plugin explorer** manages plugins (nodes, themes, menu commands). Bundled: Standard I/O, Strings, Extra themes. Format and examples: `PLUGINS.md`.
+* **Tools > Keyboard shortcuts** changes any shortcut (stored in your settings).
+
+## Dear ImGui plugin (v7)
+* The bundled **Dear ImGui** plugin is **disabled by default**: enable it in Plugins > Plugin explorer. It adds ~350 ImGui functions, 41 `ImDrawList` methods and ~500 constants (flags, colours, keys...) as nodes, plus *Add draw function* and a few helpers (ImVec2, ImVec4, IM_COL32, flags OR, address of).
+* **Edit > Add plugin function** (Ctrl+Shift+K, or the button in the block palette) opens the **plugin function browser**: search, categories, signature and description, "keep open to add several".
+* Functions that return a value (Button, Checkbox, Begin...) can be used as a statement or, with right-click > *Use as a value*, directly inside another node.
+* When you enable the plugin (or load its template, or write a graph that uses it) the editor offers to **add ImGui to your exlaunch project**: missing support files are copied (nothing is overwritten, files you already have are left alone), one marked block is appended to `CMakeLists.txt` (backup `CMakeLists.txt.odn-backup`). Plugin explorer > *Exlaunch base...* shows the state and removes exactly what was added.
+* **Help > Tutorials > Plugin tutorials > How to use Dear ImGui**: a tutorial (quick start, how a draw function works, finding nodes, pointers and text, recipes, in-game controls, troubleshooting) with buttons that load the example, open the function browser or the project base. Any plugin can ship help pages (see PLUGINS.md); they are listed in *Help > Tutorials…* (F1) while the plugin is enabled.
+* **Tested base layout**: [Fuzzy2319/SMO-Exlaunch-Base](https://github.com/Fuzzy2319/SMO-Exlaunch-Base), i.e. exlaunch + [OdysseyHeaders](https://github.com/MonsterDruide1/OdysseyHeaders) in `include/`. The patch uses the nn / sead / nvn headers your project already has and adds only what is missing (glslc, `nvn_CppFuncPtrImpl.h`, the backend in `src/`). The code was adapted by hand-testing a build on such a base with devkitA64; this editor itself never compiles for the Switch.
+* **File > New from template > Hello ImGui** loads a ready graph: it draws a window with a text and a button that counts presses. In the game, ZL + ZR (changeable in Exlaunch base… > Gamepad) gives the controller to ImGui while a window is shown (mouse and keyboard always work; touch only when your SDK headers declare it).
+* Not compiled here: the code and the patch were checked by generating / simulating on a copy of the base, not by a real Switch build. If your build fails, copy the log.

@@ -1,0 +1,220 @@
+[
+ {
+  "id": "add_draw",
+  "label": "Add draw function",
+  "category": "Dear ImGui",
+  "description": "Registers a function of yours (graph \"Define function\", no arguments, returns void) that is called every frame to draw the ImGui UI. Placed once in exl_main: no execution pins. Also installs the ImGui hooks.",
+  "place": "main",
+  "flow": true,
+  "fields": [
+   {
+    "key": "function",
+    "label": "Draw function",
+    "kind": "func",
+    "hint": "name of a function defined in the graph"
+   }
+  ],
+  "template": "nvnImGui::addDrawFunc(@function)",
+  "init": [
+   "nvnImGui::InstallHooks();"
+  ],
+  "includes": [
+   "\"imgui_backend/imgui_impl_nvn.hpp\"",
+   "\"imgui_nvn.h\"",
+   "\"imgui.h\""
+  ]
+ },
+ {
+  "id": "vec2",
+  "label": "ImVec2 (x, y)",
+  "category": "Dear ImGui: values",
+  "description": "A 2D vector (sizes, positions).",
+  "inputs": [
+   {
+    "id": "x",
+    "type": "float",
+    "label": "x",
+    "default": "0.0f"
+   },
+   {
+    "id": "y",
+    "type": "float",
+    "label": "y",
+    "default": "0.0f"
+   }
+  ],
+  "output": {
+   "type": "ImVec2",
+   "label": "vector"
+  },
+  "template": "ImVec2($x, $y)",
+  "includes": [
+   "\"imgui.h\""
+  ]
+ },
+ {
+  "id": "vec4",
+  "label": "ImVec4 (r, g, b, a)",
+  "category": "Dear ImGui: values",
+  "description": "A colour with components from 0.0 to 1.0.",
+  "inputs": [
+   {
+    "id": "r",
+    "type": "float",
+    "label": "r",
+    "default": "1.0f"
+   },
+   {
+    "id": "g",
+    "type": "float",
+    "label": "g",
+    "default": "1.0f"
+   },
+   {
+    "id": "b",
+    "type": "float",
+    "label": "b",
+    "default": "1.0f"
+   },
+   {
+    "id": "a",
+    "type": "float",
+    "label": "a",
+    "default": "1.0f"
+   }
+  ],
+  "output": {
+   "type": "ImVec4",
+   "label": "colour"
+  },
+  "template": "ImVec4($r, $g, $b, $a)",
+  "includes": [
+   "\"imgui.h\""
+  ]
+ },
+ {
+  "id": "col32",
+  "label": "Colour 0-255 (IM_COL32)",
+  "category": "Dear ImGui: values",
+  "description": "Packed 32-bit colour (ImU32) for the ImDrawList functions, components 0-255.",
+  "inputs": [
+   {
+    "id": "r",
+    "type": "int",
+    "label": "r",
+    "default": "255"
+   },
+   {
+    "id": "g",
+    "type": "int",
+    "label": "g",
+    "default": "255"
+   },
+   {
+    "id": "b",
+    "type": "int",
+    "label": "b",
+    "default": "255"
+   },
+   {
+    "id": "a",
+    "type": "int",
+    "label": "a",
+    "default": "255"
+   }
+  ],
+  "output": {
+   "type": "ImU32",
+   "label": "colour"
+  },
+  "template": "IM_COL32($r, $g, $b, $a)",
+  "includes": [
+   "\"imgui.h\""
+  ]
+ },
+ {
+  "id": "flags_or",
+  "label": "Combine flags (a | b)",
+  "category": "Dear ImGui: values",
+  "description": "Bitwise OR of two flag values, e.g. ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize. Chain several nodes for more.",
+  "inputs": [
+   {
+    "id": "a",
+    "type": "",
+    "label": "a",
+    "default": "0"
+   },
+   {
+    "id": "b",
+    "type": "",
+    "label": "b",
+    "default": "0"
+   }
+  ],
+  "output": {
+   "type": "int",
+   "label": "flags"
+  },
+  "template": "($a | $b)"
+ },
+ {
+  "id": "address",
+  "label": "Address of (&variable)",
+  "category": "Dear ImGui: values",
+  "description": "Pointer to a variable, for the widgets that edit a value in place (Checkbox, SliderFloat, InputInt...). Type the name of a variable (global or local).",
+  "fields": [
+   {
+    "key": "var",
+    "label": "Variable",
+    "kind": "var"
+   }
+  ],
+  "output": {
+   "type": "",
+   "label": "pointer"
+  },
+  "template": "&@var"
+ },
+ {
+  "id": "display_size",
+  "label": "Screen size",
+  "category": "Dear ImGui: values",
+  "description": "Size of the ImGui display (ImGui::GetIO().DisplaySize).",
+  "output": {
+   "type": "ImVec2",
+   "label": "size"
+  },
+  "template": "ImGui::GetIO().DisplaySize",
+  "includes": [
+   "\"imgui.h\""
+  ]
+ },
+ {
+  "id": "delta_time",
+  "label": "Frame time (s)",
+  "category": "Dear ImGui: values",
+  "description": "Duration of the last frame in seconds (ImGui::GetIO().DeltaTime).",
+  "output": {
+   "type": "float",
+   "label": "seconds"
+  },
+  "template": "ImGui::GetIO().DeltaTime",
+  "includes": [
+   "\"imgui.h\""
+  ]
+ },
+ {
+  "id": "framerate",
+  "label": "Frame rate (FPS)",
+  "category": "Dear ImGui: values",
+  "description": "Frames per second estimated by ImGui.",
+  "output": {
+   "type": "float",
+   "label": "fps"
+  },
+  "template": "ImGui::GetIO().Framerate",
+  "includes": [
+   "\"imgui.h\""
+  ]
+ }
+]

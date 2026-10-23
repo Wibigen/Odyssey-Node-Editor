@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFormLayout, QGr
 
 from .catalog import extract, find_demangler
 from .shells import ENVS, default_env, wsl_distros
+from .icons import svg_pixmap
+from .theme import C
 from .config import decomp_ok, load_catalog, main_cpp_path, save_config
 
 
@@ -20,7 +22,7 @@ FILTER_HELP = (
     '<code>^al::</code> &nbsp;only <code>al::</code><br>'
     '<code>^(al::|Player)</code> &nbsp;<code>al::</code> plus every name starting with Player<br>'
     '<code>.*Shine</code> &nbsp;any name containing Shine<br>'
-    '<code>.*</code> &nbsp;or an empty field: keep everything (very large catalog)<br><br>'
+    '<code>.*</code> &nbsp;or an empty field: keep every function of file_list.yml (very large catalog)<br><br>'
     '<b>Cheat sheet:</b> <code>^</code> start, <code>|</code> or, <code>( )</code> group, <code>.*</code> anything, <code>::</code> namespace separator.<br>'
     '<i>Extract the catalog again after changing it.</i>')
 
@@ -70,7 +72,7 @@ class SetupDialog(QDialog):
         self.env.currentIndexChanged.connect(self._env_changed); self._env_changed()
         g3 = QGroupBox('Advanced'); f3 = QFormLayout(g3)
         self.dem = QLineEdit(cfg['demangler']); self.dem.setPlaceholderText('auto: devkitPro, llvm-cxxfilt, c++filt'); f3.addRow('Demangler', self.dem)
-        self.flt = QLineEdit(cfg['filter']); self.flt.setToolTip(FILTER_HELP); fl = QLabel('Filter (regex)  ⓘ'); fl.setToolTip(FILTER_HELP); f3.addRow(fl, self.flt)
+        self.flt = QLineEdit(cfg['filter']); self.flt.setToolTip(FILTER_HELP); fl = QWidget(); fh = QHBoxLayout(fl); fh.setContentsMargins(0, 0, 0, 0); fh.addWidget(QLabel('Filter (regex)')); ic = QLabel(); ic.setPixmap(svg_pixmap('help', C['mu'], 14)); fh.addWidget(ic); fh.addStretch(1); fl.setToolTip(FILTER_HELP); f3.addRow(fl, self.flt)
         hint = QLabel('Only functions whose full name matches are kept in the catalog (e.g. al::setTrans). Hover for examples.'); hint.setWordWrap(True); hint.setStyleSheet('color:#8a91a5'); f3.addRow(hint)
         self.st = QLabel(); self.st.setTextFormat(Qt.RichText)
         row2 = QHBoxLayout(); row2.addStretch(1); self.bSave = QPushButton('Save'); self.bSave.setObjectName('pri'); self.bClose = QPushButton('Close'); row2.addWidget(self.bSave); row2.addWidget(self.bClose)
@@ -93,7 +95,7 @@ class SetupDialog(QDialog):
                 (bool(dm), f'Demangler: {dm}' if dm else 'Demangler not found (install devkitPro or LLVM, or set its path in Advanced)'),
                 (n > 0, f'Catalog: {n} functions' if n else 'Catalog not extracted yet'),
                 (bool(main_cpp_path(c)), f'Generated file: {main_cpp_path(c)}' if main_cpp_path(c) else 'Generated file not set (optional while editing)')]
-        self.st.setText('<br>'.join(f'<span style="color:{"#4ecb8a" if ok else "#ef5b5b"}">{"✔" if ok else "✖"}</span> {t}' for ok, t in rows))
+        self.st.setText('<br>'.join(f'<span style="color:{C["ok"] if ok else C["ko"]}">{"OK" if ok else "To do"}</span> &nbsp;{t}' for ok, t in rows))
 
     def save(self):
         c = self.collect()
@@ -108,7 +110,7 @@ class SetupDialog(QDialog):
 
     def _end(self): self.bExt.setEnabled(True); self.bar.setVisible(False)
 
-    def _ok(self, cat): self._end(); self.msg.setText(f'{len(cat)} functions extracted ✔'); self.catalog_ready.emit(cat); self.refresh()
+    def _ok(self, cat): self._end(); self.msg.setText(f'{len(cat)} functions extracted'); self.catalog_ready.emit(cat); self.refresh()
     def _fail(self, e): self._end(); self.msg.setText(''); QMessageBox.critical(self, 'Extraction failed', e)
     def done(self, r):
         if self.th and self.th.isRunning(): self.th.wait()

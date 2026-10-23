@@ -4,6 +4,7 @@ from pathlib import Path
 
 from .config import LIBDIR
 from .graph import E
+from .plugnodes import EMBED, plug_def
 
 EXT = '.odnf'
 
@@ -28,8 +29,8 @@ def collect(g, ids, expand=True):
 
 
 def fragment(g, ids, name, desc=''):
-    ids = {i for i in ids if i in g.nodes}
-    return dict(format='odnf', version=1, name=name, desc=desc, inc=g.inc,
+    ids = {i for i in ids if i in g.nodes}; pids = {g.nodes[i].f.get('pid') for i in ids if g.nodes[i].type == 'plug'}
+    return dict(format='odnf', version=1, name=name, desc=desc, inc=g.inc, plug={p: plug_def(p) for p in pids if plug_def(p)},
                 nodes={str(i): dict(id=i, type=g.nodes[i].type, f=g.nodes[i].f, d=g.nodes[i].d, x=g.nodes[i].x, y=g.nodes[i].y) for i in sorted(ids)},
                 edges=[[list(e[0]), list(e[1])] for e in g.edges if e[0][0] in ids and e[1][0] in ids],
                 groups=[dict(name=v['name'], color=v['color'], nodes=[i for i in v['nodes'] if i in ids]) for v in g.groups.values() if any(i in ids for i in v['nodes'])])
@@ -60,6 +61,8 @@ def insert(g, frag, x=0.0, y=0.0):
     """Add a saved fragment to graph g with fresh ids at (x, y); it is wrapped in a group named after the fragment.
     Returns (new ids, notes about renamed or reused things)."""
     notes, mapping, new = [], {}, []
+    for p, d in (frag.get('plug') or {}).items():  # nodes of a plugin: keep working even if the plugin is not installed here
+        if not plug_def(p) and isinstance(d, dict) and 'template' in d and 'fields' in d: EMBED[p] = d; notes.append(f'plugin node {d.get("label", p)} uses the copy saved with the function (plugin not installed)')
     have_fn = {n.f.get('name') for n in g.nodes.values() if n.type == 'func'}; have_gl = {n.f.get('name'): n.id for n in g.nodes.values() if n.type == 'global'}
     nodes = {int(k): v for k, v in frag['nodes'].items()}; ren = {}
     for k, v in nodes.items():  # name clashes

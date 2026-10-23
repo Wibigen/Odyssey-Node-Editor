@@ -14,6 +14,12 @@ F_TITLE.setBold(True); F_TITLE.setPointSizeF(9.5); F_PIN.setPointSizeF(8.5); F_S
 FM_T, FM_P = QFontMetricsF(F_TITLE), QFontMetricsF(F_PIN)
 
 
+def head_color(n):
+    if n.type == 'plug':
+        from .plugnodes import plug_def; d = plug_def(n.f.get('pid')); return (d or {}).get('color') or '#8a6fd1'
+    return HEAD_COLORS.get(n.type, '#6b7385')
+
+
 COMPACT = ('op', 'cmp', 'logic', 'not')  # Math & logic nodes are drawn small and square
 
 
@@ -39,7 +45,7 @@ class NodeItem(QGraphicsItem):
         wr = max([FM_P.horizontalAdvance(a) for (d, _), (a, b) in self.texts.items() if d == 'o'] or [0])
         self.compact = node.type in COMPACT
         self.w = max(190.0, wl + wr + 56, min(FM_T.horizontalAdvance(self.title) + 28, 360.0))
-        f = node.f; self.saved = f.get('save') if node.type in CALLS and not f.get('inline') and g.ret_type(node) != 'void' else ''  # a call that keeps its result in a variable
+        f = node.f; self.saved = f.get('save') if (node.type in CALLS or g.has_inline(node)) and not f.get('inline') and g.ret_type(node) != 'void' else ''  # a call that keeps its result in a variable
         self.y0 = HEAD + (SUB if self.sub else 0) + (SAVEH if self.saved else 0) + 8
         self.h = self.y0 + max(len(self.ins), len(self.outs), 1) * ROW + 6
         if self.compact: self.w = self.h = 66.0
@@ -67,7 +73,7 @@ class NodeItem(QGraphicsItem):
     SYMS = {'&&': 'AND', '||': 'OR', '==': '=', '!=': '≠', '<=': '≤', '>=': '≥'}  # conditions read as words / math signs, not as C++
 
     def paint_compact(self, p):
-        W, H = self.w, self.h; n = self.node; col = QColor(HEAD_COLORS.get(n.type, '#6b7385'))
+        W, H = self.w, self.h; n = self.node; col = QColor(head_color(n))
         body = QPainterPath(); body.addRoundedRect(QRectF(0, 0, W, H), 10, 10); p.fillPath(body, QColor(C['node']))
         p.save(); p.setClipPath(body); p.fillRect(QRectF(0, 0, W, CH), col); p.restore()
         sel = self.isSelected(); p.setPen(QPen(QColor(C['ac']) if sel else QColor(C['ln']), 2.2 if sel else 1.4)); p.setBrush(Qt.NoBrush); p.drawPath(body)
@@ -75,13 +81,13 @@ class NodeItem(QGraphicsItem):
         raw = 'NOT' if n.type == 'not' else str(n.f.get('op', '?')); sym = self.SYMS.get(raw, raw) if n.type != 'op' else raw
         f = QFont(F_TITLE); f.setPointSizeF(15 if len(sym) < 3 else 9.5); p.setFont(f); p.setPen(Qt.white)
         p.drawText(QRectF(26, CH, W - 36, H - CH - (12 if n.type in ('op', 'cmp') else 0)), Qt.AlignCenter, sym)
-        if n.type in ('op', 'cmp'): p.setFont(F_SUB); p.setPen(QColor('#8a91a5')); p.drawText(QRectF(24, H - 15, W - 34, 13), Qt.AlignCenter, str(n.f.get('type', '')))
+        if n.type in ('op', 'cmp'): p.setFont(F_SUB); p.setPen(QColor(C['mu'])); p.drawText(QRectF(24, H - 15, W - 34, 13), Qt.AlignCenter, str(n.f.get('type', '')))
         p.setFont(F_SUB)
         for k, pin in enumerate(self.ins):
             pt = self.pin_pos('i', k); linked = self.scn.graph.linked(n.id, pin.id, 'i'); c = QColor(pin_color(pin.type))
             p.setPen(QPen(c, 2)); p.setBrush(c if linked else QColor(C['node'])); p.drawEllipse(pt, 5, 5)
             v = '' if linked else str(n.d.get(pin.id, '')).strip()
-            p.setPen(QColor('#7fd6c2') if v else QColor(C['mu'])); p.drawText(QRectF(pt.x() + 8, pt.y() - 9, 20, 18), Qt.AlignVCenter | Qt.AlignLeft, short(v, 4) if v else pin.label[:1])
+            p.setPen(QColor(C['val']) if v else QColor(C['mu'])); p.drawText(QRectF(pt.x() + 8, pt.y() - 9, 20, 18), Qt.AlignVCenter | Qt.AlignLeft, short(v, 4) if v else pin.label[:1])
         for k, pin in enumerate(self.outs):
             pt = self.pin_pos('o', k); c = QColor(pin_color(pin.type)); p.setPen(QPen(c, 2)); p.setBrush(c if self.scn.graph.linked(n.id, pin.id, 'o') else QColor(C['node'])); p.drawEllipse(pt, 5, 5)
 
@@ -89,16 +95,21 @@ class NodeItem(QGraphicsItem):
         p.setRenderHint(QPainter.Antialiasing); W = self.w
         if self.compact: return self.paint_compact(p)
         body = QPainterPath(); body.addRoundedRect(QRectF(0, 0, W, self.h), 10, 10)
+        plug = self.node.type == 'plug'; pc = QColor(head_color(self.node))
+        if plug:  # a soft halo in the plugin's color: plugin nodes are easy to tell apart without shouting
+            p.setPen(Qt.NoPen)
+            for grow, alpha in ((6.0, 10), (4.0, 16), (2.2, 26)):
+                halo = QColor(pc); halo.setAlpha(alpha); p.setBrush(halo); p.drawRoundedRect(QRectF(0, 0, W, self.h).adjusted(-grow, -grow, grow, grow), 10 + grow, 10 + grow)
         p.fillPath(body, QColor(C['node']))
-        p.save(); p.setClipPath(body); p.fillRect(QRectF(0, 0, W, HEAD), QColor(HEAD_COLORS.get(self.node.type, '#6b7385'))); p.restore()
-        sel = self.isSelected(); p.setPen(QPen(QColor(C['ac']) if sel else QColor(C['ln']), 2.2 if sel else 1.4)); p.setBrush(Qt.NoBrush); p.drawPath(body)
+        p.save(); p.setClipPath(body); p.fillRect(QRectF(0, 0, W, HEAD), QColor(head_color(self.node))); p.restore()
+        sel = self.isSelected(); edge = QColor(pc.red(), pc.green(), pc.blue(), 190) if plug else QColor(C['ln']); p.setPen(QPen(QColor(C['ac']) if sel else edge, 2.2 if sel else 1.4)); p.setBrush(Qt.NoBrush); p.drawPath(body)
         p.setFont(F_TITLE); p.setPen(Qt.white)
         p.drawText(QRectF(10, 0, W - 20, HEAD), Qt.AlignVCenter | Qt.AlignLeft, FM_T.elidedText(self.title, Qt.ElideRight, W - 20))
         if self.sub:
-            p.setFont(F_SUB); p.setPen(QColor('#b9c0d4')); p.drawText(QRectF(10, HEAD + 1, W - 20, SUB), Qt.AlignVCenter | Qt.AlignLeft, QFontMetricsF(F_SUB).elidedText(self.sub, Qt.ElideRight, W - 20))
+            p.setFont(F_SUB); p.setPen(QColor(C['sub'])); p.drawText(QRectF(10, HEAD + 1, W - 20, SUB), Qt.AlignVCenter | Qt.AlignLeft, QFontMetricsF(F_SUB).elidedText(self.sub, Qt.ElideRight, W - 20))
         if self.saved:  # the variable that receives the result, clearly readable
             y = HEAD + (SUB if self.sub else 0) + 2; r = QRectF(10, y, W - 20, SAVEH - 4); p.setPen(QPen(QColor('#f0b429'), 1.2)); p.setBrush(QColor(240, 180, 41, 38)); p.drawRoundedRect(r, 6, 6)
-            f = QFont(F_TITLE); f.setPointSizeF(9.5); p.setFont(f); p.setPen(QColor('#ffd166')); p.drawText(r.adjusted(8, 0, -8, 0), Qt.AlignVCenter | Qt.AlignLeft, QFontMetricsF(f).elidedText('→ saved in  ' + self.saved, Qt.ElideRight, W - 36))
+            f = QFont(F_TITLE); f.setPointSizeF(9.5); p.setFont(f); p.setPen(QColor(C['warn'])); p.drawText(r.adjusted(8, 0, -8, 0), Qt.AlignVCenter | Qt.AlignLeft, QFontMetricsF(f).elidedText('Saved in  ' + self.saved, Qt.ElideRight, W - 36))
         p.setFont(F_PIN)
         for d, lst in (('i', self.ins), ('o', self.outs)):
             for k, pin in enumerate(lst):
@@ -111,7 +122,7 @@ class NodeItem(QGraphicsItem):
                 label, val = self.texts[d, pin.id]
                 if d == 'i':
                     p.setPen(QColor(C['mu'])); p.drawText(QRectF(pt.x() + 12, pt.y() - 10, W, 20), Qt.AlignVCenter | Qt.AlignLeft, label)
-                    if val: p.setPen(QColor('#7fd6c2')); p.drawText(QRectF(pt.x() + 12 + FM_P.horizontalAdvance(label) + 8, pt.y() - 10, W, 20), Qt.AlignVCenter | Qt.AlignLeft, val)
+                    if val: p.setPen(QColor(C['val'])); p.drawText(QRectF(pt.x() + 12 + FM_P.horizontalAdvance(label) + 8, pt.y() - 10, W, 20), Qt.AlignVCenter | Qt.AlignLeft, val)
                 else: p.setPen(QColor(C['mu'])); p.drawText(QRectF(pt.x() - W - 12, pt.y() - 10, W, 20), Qt.AlignVCenter | Qt.AlignRight, label)
 
     def hoverMoveEvent(self, ev):
@@ -398,7 +409,7 @@ class GraphScene(QGraphicsScene):
         else:
             if not it.isSelected(): self.clearSelection(); it.setSelected(True)
             m.addAction('Edit…', lambda: self.node_activated.emit(it.node.id)); m.addAction('Duplicate\tCtrl+D', self.duplicate_selected)
-            if it.node.type in CALLS:  # hide / show the execution pins: the call then runs where its result is used
+            if it.node.type in CALLS or self.graph.has_inline(it.node):  # hide / show the execution pins: the call then runs where its result is used
                 inl = bool(it.node.f.get('inline')); ac = m.addAction('Use as a value (hide execution pins)'); ac.setCheckable(True); ac.setChecked(inl)
                 if not inl and self.graph.ret_type(it.node) == 'void' and it.node.type in ('callfn', 'callorig'): ac.setEnabled(False); ac.setToolTip('This call returns void, so it has no value to use')
                 elif not inl and self.graph.ret_type(it.node) == 'void': ac.setToolTip('The catalog says void: the return type becomes "auto" (change it in the inspector if you know it)')
