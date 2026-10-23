@@ -11,6 +11,10 @@
 
 View > Theme changes the look quickly.
 
+## Language
+
+**View > Language** (the globe icon, so you can find it in any language) switches the interface between English, French, German, Spanish, Italian, Dutch, Russian, Japanese and Chinese. English is the default. The program offers to restart to apply the change. Plugin content (for example the Dear ImGui function descriptions) stays in English.
+
 ## Keyboard shortcuts
 
 **Tools > Keyboard shortcuts…** changes any shortcut. Defaults:
@@ -27,4 +31,5 @@ View > Theme changes the look quickly.
 | F, Ctrl+J | Fit view, show/hide output |
 | Ctrl+E, F5 | Write to project, compile |
 | Ctrl+N / O / S | New, open, save |
+| Ctrl+Shift+S | Save as… |
 | F1 | Tutorials |

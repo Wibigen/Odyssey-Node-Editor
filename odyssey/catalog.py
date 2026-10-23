@@ -1,4 +1,5 @@
 """Extract the function catalog from OdysseyDecomp (file_list.yml + headers + demangling)."""
+from .i18n import tr
 import json, os, re, shutil, subprocess
 from pathlib import Path
 from .config import CATF, NOWIN
@@ -112,7 +113,7 @@ def extract(cfg, progress=lambda msg: None):
     ent = []  # (offset, symbol, status)
     for off, labels, st in read_file_list(fl.read_text('utf-8', errors='ignore')):
         for lab in (labels or [f'sub_{off:x}']): ent.append((off, lab, st))
-    progress(f'Demangling {len(ent)} symbols…')
+    progress(tr('Demangling {0} symbols…', len(ent)))
     mang = [e[1] for e in ent if e[1].startswith('_Z')]; dem = iter(demangle_all(mang, cfg.get('demangler', '')) if mang else [])
     res, seen = [], set()
     for off, sym, st in ent:

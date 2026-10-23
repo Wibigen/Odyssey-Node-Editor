@@ -1,4 +1,5 @@
 """Plugin explorer: every installed plugin with its picture, author, version and description; enable, disable, install, remove, create."""
+from .i18n import tr, tr_n
 import hashlib
 from pathlib import Path
 
@@ -95,14 +96,14 @@ class PluginExplorer(QDialog):
         self.bBase.setVisible(bool(pl and pl.base)); self.bFuncs.setVisible(bool(pl and pl.enabled and pl.catalog_size))
         if not pl:
             self.name.setText('No plugin'); self.by.setText('Install one with the Install button.'); self.desc.setText(''); self.sum.setText(''); self.badges.setText(''); self.pic.clear(); self.err.setVisible(False); return
-        self.pic.setPixmap(plugin_pixmap(pl, 96)); self.name.setText(pl.title); self.by.setText(f'by {pl.author}  ·  version {pl.version}'); self.desc.setText(pl.description)
-        tag = lambda t, col: f'<span style="background:{col};color:#fff;border-radius:4px;padding:1px 6px"> {t} </span>&nbsp;'
+        self.pic.setPixmap(plugin_pixmap(pl, 96)); self.name.setText(pl.title); self.by.setText(tr('by {0}  ·  version {1}', pl.author, pl.version)); self.desc.setText(pl.description)
+        tag = lambda t, col: tr('<span style="background:{0};color:#fff;border-radius:4px;padding:1px 6px"> {1} </span>&nbsp;', col, t)
         b = tag('Built-in', '#6b7385') if pl.builtin else tag('Installed', '#3a7bd5')
         b += tag('Enabled', '#2fa66a') if pl.enabled else tag('Disabled', '#7a7f90')
         if pl.has_python: b += tag('Python code', '#c98a2b')
         if pl.base: b += tag('Changes your exlaunch base', '#c98a2b')
         if pl.shadowed: b += tag('Replaces a built-in plugin', '#9a66e8')
-        if pl.errors: b += tag(f'{len(pl.errors)} problem' + ('s' if len(pl.errors) != 1 else ''), '#d63c3c')
+        if pl.errors: b += tag(tr_n('{0} problem', '{0} problems', len(pl.errors)), '#d63c3c')
         self.badges.setText(b); self.sum.setText(pl.summary() + f'   ·   id: {pl.id}')
         if pl.enabled:
             cats = {}
@@ -112,21 +113,21 @@ class PluginExplorer(QDialog):
                 for d in ds: ch = QTreeWidgetItem([d['label']]); ch.setToolTip(0, d['description']); top.addChild(ch)
                 top.setExpanded(len(cats) == 1 or len(ds) <= 8)
             if pl.catalog_size:
-                cat = PN.CATALOG.get(pl.id); top = QTreeWidgetItem([f'Function catalog  ({pl.catalog_size})']); top.setIcon(0, icon('func', 'mu', 16)); self.tree.addTopLevelItem(top)
+                cat = PN.CATALOG.get(pl.id); top = QTreeWidgetItem([tr('Function catalog  ({0})', pl.catalog_size)]); top.setIcon(0, icon('func', 'mu', 16)); self.tree.addTopLevelItem(top)
                 kinds = {}
                 for e in (cat['entries'] if cat else []): kinds[e.get('c', '').split(':')[0] or 'Other'] = kinds.get(e.get('c', '').split(':')[0] or 'Other', 0) + 1
                 for k, n in sorted(kinds.items()): top.addChild(QTreeWidgetItem([f'{k}  ({n})']))
                 top.setToolTip(0, 'Browse and add them with Edit > Add plugin function (Ctrl+Shift+K)')
             if pl.templates:
-                top = QTreeWidgetItem([f'Templates  ({len(pl.templates)})  - File > New from template']); self.tree.addTopLevelItem(top)
+                top = QTreeWidgetItem([tr('Templates  ({0})  - File > New from template', len(pl.templates))]); self.tree.addTopLevelItem(top)
                 for nm, _p, ds in pl.templates: ch = QTreeWidgetItem([nm]); ch.setToolTip(0, ds); top.addChild(ch)
                 top.setExpanded(True)
             if pl.themes:
-                top = QTreeWidgetItem([f'Themes  ({len(pl.themes)})']); top.setIcon(0, icon('palette', 'mu', 16)); self.tree.addTopLevelItem(top)
+                top = QTreeWidgetItem([tr('Themes  ({0})', len(pl.themes))]); top.setIcon(0, icon('palette', 'mu', 16)); self.tree.addTopLevelItem(top)
                 for _k, nm in pl.themes: top.addChild(QTreeWidgetItem([nm]))
                 top.setExpanded(True)
             if pl.actions:
-                top = QTreeWidgetItem([f'Menu actions  ({len(pl.actions)})']); self.tree.addTopLevelItem(top)
+                top = QTreeWidgetItem([tr('Menu actions  ({0})', len(pl.actions))]); self.tree.addTopLevelItem(top)
                 for a in pl.actions: top.addChild(QTreeWidgetItem([a[0]]))
         else: self.tree.addTopLevelItem(QTreeWidgetItem(['Disabled: enable it to use its content.']))
         self.err.setVisible(bool(pl.errors)); self.err.setPlainText('\n'.join(pl.errors))
@@ -156,7 +157,7 @@ class PluginExplorer(QDialog):
     def remove(self):
         pl = self.cur()
         if not pl or pl.builtin: return
-        if QMessageBox.question(self, 'Remove plugin', f'Delete the plugin "{pl.title}" and its files?\nNodes already used in your graph keep working (a copy of their definition is saved in the graph).') != QMessageBox.Yes: return
+        if QMessageBox.question(self, 'Remove plugin', tr('Delete the plugin "{0}" and its files?\nNodes already used in your graph keep working (a copy of their definition is saved in the graph).', pl.title)) != QMessageBox.Yes: return
         try: MANAGER.remove(pl.id)
         except Exception as e: QMessageBox.warning(self, 'Remove plugin', str(e)); return
         self.apply()
@@ -180,7 +181,7 @@ class PluginExplorer(QDialog):
         d = NewPluginDialog(self)
         if not d.exec(): return
         pid = MANAGER.create(d.title.text().strip(), d.author.text().strip(), d.desc.text().strip()); self.apply(select=pid)
-        QMessageBox.information(self, 'New plugin', f'Created in:\n{USER_DIR / pid}\n\nEdit plugin.json (and add an icon.png), then press Reload.')
+        QMessageBox.information(self, 'New plugin', tr('Created in:\n{0}\n\nEdit plugin.json (and add an icon.png), then press Reload.', USER_DIR / pid))
 
     @staticmethod
     def open_dir(p):

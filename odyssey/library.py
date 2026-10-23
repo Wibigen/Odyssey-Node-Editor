@@ -1,4 +1,5 @@
 """Your function library: save a function (or a selection of nodes) as a .odnf file and insert it again later (templates)."""
+from .i18n import tr
 import json, re
 from pathlib import Path
 
@@ -62,18 +63,18 @@ def insert(g, frag, x=0.0, y=0.0):
     Returns (new ids, notes about renamed or reused things)."""
     notes, mapping, new = [], {}, []
     for p, d in (frag.get('plug') or {}).items():  # nodes of a plugin: keep working even if the plugin is not installed here
-        if not plug_def(p) and isinstance(d, dict) and 'template' in d and 'fields' in d: EMBED[p] = d; notes.append(f'plugin node {d.get("label", p)} uses the copy saved with the function (plugin not installed)')
+        if not plug_def(p) and isinstance(d, dict) and 'template' in d and 'fields' in d: EMBED[p] = d; notes.append(tr('plugin node {0} uses the copy saved with the function (plugin not installed)', d.get('label', p)))
     have_fn = {n.f.get('name') for n in g.nodes.values() if n.type == 'func'}; have_gl = {n.f.get('name'): n.id for n in g.nodes.values() if n.type == 'global'}
     nodes = {int(k): v for k, v in frag['nodes'].items()}; ren = {}
     for k, v in nodes.items():  # name clashes
         if v['type'] == 'func' and v['f'].get('name') in have_fn:
             old, base, c = v['f']['name'], v['f']['name'], 2
             while f'{base}_{c}' in have_fn: c += 1
-            ren[old] = f'{base}_{c}'; have_fn.add(ren[old]); notes.append(f'function {old} renamed to {ren[old]} (name already used)')
+            ren[old] = f'{base}_{c}'; have_fn.add(ren[old]); notes.append(tr('function {0} renamed to {1} (name already used)', old, ren[old]))
     minx, miny = min([v['x'] for v in nodes.values()] or [0]), min([v['y'] for v in nodes.values()] or [0])
     for k, v in nodes.items():
         f = dict(v['f'])
-        if v['type'] == 'global' and f.get('name') in have_gl: mapping[k] = have_gl[f['name']]; notes.append(f'global {f["name"]} already exists: reused'); continue
+        if v['type'] == 'global' and f.get('name') in have_gl: mapping[k] = have_gl[f['name']]; notes.append(tr('global {0} already exists: reused', f['name'])); continue
         if v['type'] == 'func' and f.get('name') in ren: f['name'] = ren[f['name']]
         if v['type'] == 'callfn' and f.get('name') in ren: f['name'] = ren[f['name']]
         n = g.add(v['type'], f, x + v['x'] - minx, y + v['y'] - miny, v.get('d')); mapping[k] = n.id; new.append(n.id)
@@ -83,7 +84,7 @@ def insert(g, frag, x=0.0, y=0.0):
             if e not in g.edges: g.edges.append(e)
     have = set(g.inc.split('\n'))
     add = [ln for ln in (frag.get('inc') or '').split('\n') if ln.strip() and ln not in have]
-    if add: g.inc = g.inc.rstrip('\n') + '\n' + '\n'.join(add); notes.append(f'{len(add)} include line(s) added')
+    if add: g.inc = g.inc.rstrip('\n') + '\n' + '\n'.join(add); notes.append(tr('{0} include line(s) added', len(add)))
     if frag.get('groups'):
         for gr in frag['groups']:
             members = [mapping[i] for i in gr['nodes'] if i in mapping and mapping[i] in new]

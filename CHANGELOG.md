@@ -1,6 +1,15 @@
 # Changelog
 Versioning: +1 for a big update, +0.1 for a small one.
 
+## v7.7
+- **Save / Open recent:** the editor now remembers the file you are editing. **Ctrl+S** saves straight to it (the name is in the window title, a dot means unsaved changes); only a new graph asks for a name. **Save as…** is Ctrl+Shift+S. **File > Open recent** lists the last files (missing ones are skipped, *Clear the list*). Closing / opening / new ask before discarding unsaved changes. The autosaved session remembers the file too.
+- **9 languages:** English (default), Français, Deutsch, Español, Italiano, Nederlands, Русский, 日本語, 中文. Choose in **View > Language** (globe icon, so it can be found in any language). The choice is saved and applied after a restart (the editor offers to restart). About 900 interface texts per language, the Help tour, the setup dialogs and the error messages are translated.
+- **Tutorials** (the 15 pages) are translated in all 9 languages. Pages missing in a language fall back to English.
+- **Language packs:** `lang/<code>.json` is `{"English text": "translation"}`. A file with the same name in your data folder (`lang/`) overrides the bundled one, and a new code adds a language. Missing entries show the English text.
+- **Not translated:** plugin content (Dear ImGui function names / descriptions, Standard I/O and Strings node titles) and the ImGui tutorial stay in English; a plugin may ship its own translations.
+- `build_exe.bat` now bundles `lang/`.
+- Checked here: headless Qt run of the whole window in each of the 9 languages (menus, dialogs, tour, tutorials, plugin browser) with no exception. Not checked: a real exe build, a real restart on Windows, a native speaker's review of the translations.
+
 ## v7.6
 - **Fix: the menu of a link released on empty space had no plugin function.** It now has **Plugin function…** next to *Game function…* (opens the plugin function browser; the chosen node is created and connected). Plugin node blocks were already in the categories.
 - **Plugin nodes are easier to recognise:** a soft halo and a thin edge in the plugin's colour around the node (selected nodes keep the accent border).

@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QFont
 from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSplitter, QTextBrowser, QVBoxLayout, QWidget
 
+from . import i18n
 from .theme import C
 
 CSS = """
@@ -49,7 +50,7 @@ class HelpDialog(QDialog):
 
     def text_of(self, i):
         if i not in self.texts:
-            try: self.texts[i] = self.topics[i][3].read_text('utf-8')
+            try: self.texts[i] = i18n.localized(self.topics[i][3]).read_text('utf-8')
             except Exception as e: self.texts[i] = f'# Cannot read this page\n\n{e}'
         return self.texts[i]
 

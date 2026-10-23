@@ -1,6 +1,7 @@
 """Change the return type of a game function (the catalog guesses it from headers and is sometimes wrong)."""
 from PySide6.QtWidgets import QCheckBox, QComboBox, QDialog, QDialogButtonBox, QLabel, QMessageBox, QVBoxLayout
 
+from .i18n import tr
 from .config import load_config, save_config
 from .graph import COMMON_TYPES
 
@@ -8,7 +9,7 @@ from .graph import COMMON_TYPES
 class RetTypeDialog(QDialog):
     def __init__(self, parent, name, current, guess, remembered):
         super().__init__(parent); self.setWindowTitle('Return type'); self.setMinimumWidth(460); v = QVBoxLayout(self)
-        lab = QLabel(f'<b>{name}</b><br>The catalog says it returns <b>{guess}</b>.'); lab.setWordWrap(True); v.addWidget(lab)
+        lab = QLabel(tr('<b>{0}</b><br>The catalog says it returns <b>{1}</b>.', name, guess)); lab.setWordWrap(True); v.addWidget(lab)
         self.t = QComboBox(); self.t.setEditable(True); self.t.addItems([x for x in dict.fromkeys([current, guess, 'void', *COMMON_TYPES]) if x]); self.t.setEditText(current); v.addWidget(self.t)
         self.remember = QCheckBox('Use this type for every call of this function (remembered in your settings)'); self.remember.setChecked(remembered); v.addWidget(self.remember)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel); bb.accepted.connect(self.accept); bb.rejected.connect(self.reject); v.addWidget(bb)

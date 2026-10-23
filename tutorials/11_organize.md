@@ -21,6 +21,7 @@ Reuse your own work across projects.
 
 ## Files
 
-* **File > Save as…**: `.odn` files; autosave also keeps your session.
+* **File > Save** (Ctrl+S) writes to the file you are working on: its name is in the window title, and a dot (•) means unsaved changes. The first time, it asks for a name. **Save as…** (Ctrl+Shift+S) saves under another name. Graphs are `.odn` files.
+* **File > Open recent** lists your last files. Autosave also keeps your session, including the file you were editing.
 * **File > Save as startup graph**: what **File > New** opens.
 * **New from template**: ready graphs (for instance from plugins).

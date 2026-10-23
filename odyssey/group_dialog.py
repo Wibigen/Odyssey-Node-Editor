@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QVBoxLayout
 
+from .i18n import tr
 from .graph import COLOR_NAMES
 
 
@@ -26,7 +27,7 @@ class GroupDialog(QDialog):
         mine = set(gr.get('nodes', [])) | set(preselected)
         for n in sorted(graph.nodes.values(), key=lambda n: (graph.group_of(n.id) not in (gid, None), n.id)):
             other = graph.group_of(n.id); title = graph.spec(n)[0]
-            it = QListWidgetItem(f'#{n.id}  {title}' + (f'    (now in "{graph.groups[other]["name"]}")' if other not in (None, gid) else '')); it.setData(Qt.UserRole, n.id)
+            it = QListWidgetItem(f'#{n.id}  {title}' + (tr('    (now in "{0}")', graph.groups[other]['name']) if other not in (None, gid) else '')); it.setData(Qt.UserRole, n.id)
             it.setFlags(it.flags() | Qt.ItemIsUserCheckable); it.setCheckState(Qt.Checked if n.id in mine else Qt.Unchecked); self.lst.addItem(it)
         row = QHBoxLayout(); v.addLayout(row)
         for t, fn in (('Select all', lambda: self.setall(Qt.Checked)), ('Select none', lambda: self.setall(Qt.Unchecked))):

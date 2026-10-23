@@ -4,6 +4,7 @@ from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtWidgets import (QComboBox, QDialog, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QProgressBar,
                                QPushButton, QVBoxLayout, QWidget)
 
+from .i18n import tr
 from .catalog import extract, find_demangler
 from .shells import ENVS, default_env, wsl_distros
 from .icons import svg_pixmap
@@ -92,10 +93,10 @@ class SetupDialog(QDialog):
     def refresh(self):
         c = self.collect(); n = len(load_catalog()); dm = find_demangler(c['demangler'])
         rows = [(decomp_ok(c), 'OdysseyDecomp folder is valid' if decomp_ok(c) else 'OdysseyDecomp: data/file_list.yml not found'),
-                (bool(dm), f'Demangler: {dm}' if dm else 'Demangler not found (install devkitPro or LLVM, or set its path in Advanced)'),
-                (n > 0, f'Catalog: {n} functions' if n else 'Catalog not extracted yet'),
-                (bool(main_cpp_path(c)), f'Generated file: {main_cpp_path(c)}' if main_cpp_path(c) else 'Generated file not set (optional while editing)')]
-        self.st.setText('<br>'.join(f'<span style="color:{C["ok"] if ok else C["ko"]}">{"OK" if ok else "To do"}</span> &nbsp;{t}' for ok, t in rows))
+                (bool(dm), tr('Demangler: {0}', dm) if dm else 'Demangler not found (install devkitPro or LLVM, or set its path in Advanced)'),
+                (n > 0, tr('Catalog: {0} functions', n) if n else 'Catalog not extracted yet'),
+                (bool(main_cpp_path(c)), tr('Generated file: {0}', main_cpp_path(c)) if main_cpp_path(c) else 'Generated file not set (optional while editing)')]
+        self.st.setText('<br>'.join(tr('<span style="color:{0}">{1}</span> &nbsp;{2}', C['ok'] if ok else C['ko'], 'OK' if ok else 'To do', t) for ok, t in rows))
 
     def save(self):
         c = self.collect()
@@ -110,7 +111,7 @@ class SetupDialog(QDialog):
 
     def _end(self): self.bExt.setEnabled(True); self.bar.setVisible(False)
 
-    def _ok(self, cat): self._end(); self.msg.setText(f'{len(cat)} functions extracted'); self.catalog_ready.emit(cat); self.refresh()
+    def _ok(self, cat): self._end(); self.msg.setText(tr('{0} functions extracted', len(cat))); self.catalog_ready.emit(cat); self.refresh()
     def _fail(self, e): self._end(); self.msg.setText(''); QMessageBox.critical(self, 'Extraction failed', e)
     def done(self, r):
         if self.th and self.th.isRunning(): self.th.wait()

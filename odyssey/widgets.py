@@ -1,4 +1,5 @@
 """Reusable widgets: C++ highlighter, block palette, inspector, build runner."""
+from .i18n import tr
 import os, re
 from html import escape
 from PySide6.QtCore import QMimeData, QObject, QProcess, QRect, QSize, Qt, QTimer, Signal
@@ -111,7 +112,7 @@ class Palette(QWidget):
         """entries: [(path, name, description, node count)]"""
         while self.lib.childCount(): self.lib.removeChild(self.lib.child(0))
         for p, name, desc, n in entries:
-            c = QTreeWidgetItem([name]); c.setData(0, Qt.UserRole, f'odn:lib:{p}'); c.setToolTip(0, (desc + '\n' if desc else '') + f'{n} nodes - double-click or drag to insert'); self.lib.addChild(c)
+            c = QTreeWidgetItem([name]); c.setData(0, Qt.UserRole, f'odn:lib:{p}'); c.setToolTip(0, (desc + '\n' if desc else '') + tr('{0} nodes - double-click or drag to insert', n)); self.lib.addChild(c)
         if not entries:
             c = QTreeWidgetItem(['(empty: save a function with Library > Save selection)']); c.setFlags(Qt.NoItemFlags); self.lib.addChild(c)
         self.lib.setExpanded(True)
@@ -121,7 +122,7 @@ class Palette(QWidget):
         for i in range(self.tree.topLevelItemCount()):
             top, any_ = self.tree.topLevelItem(i), False
             for j in range(top.childCount()):
-                c = top.child(j); hide = bool(q) and q not in c.text(0).lower() and q not in (PRE[c.text(0)][3].lower() if c.text(0) in PRE else ''); c.setHidden(hide); any_ |= not hide
+                c = top.child(j); key = (c.data(0, Qt.UserRole) or '')[8:] if str(c.data(0, Qt.UserRole) or '').startswith('odn:pre:') else ''; hide = bool(q) and q not in c.text(0).lower() and q not in key.lower() and q not in (c.toolTip(0) or '').lower(); c.setHidden(hide); any_ |= not hide
             top.setHidden(not any_)
 
 
@@ -254,7 +255,7 @@ class Inspector(QScrollArea):
             b1.setToolTip('The catalog guesses return types from headers; change it if a function marked void really returns something'); b2.setToolTip('Back to the catalog type')
             def upd():
                 g, nn = self.graph, self.graph.nodes.get(self.nid)
-                if nn: eff, cat = g.ret_type(nn), g.sg(nn)['r']; lab.setText(f'<b>{escape(eff)}</b>' + (f' <span style="color:#e6b673">(catalog: {escape(cat)})</span>' if eff != cat else ''))
+                if nn: eff, cat = g.ret_type(nn), g.sg(nn)['r']; lab.setText(f'<b>{escape(eff)}</b>' + (tr(' <span style="color:#e6b673">(catalog: {0})</span>', escape(cat)) if eff != cat else ''))
             def change():
                 nn = self.graph.nodes.get(self.nid)
                 if not nn: return
@@ -287,7 +288,7 @@ class Inspector(QScrollArea):
         self.fn_box.setVisible(game)
         if game:
             c = g.sg(n); known = n.f.get('sym') in g.cat; rt = g.ret_type(n) if n.type == 'callgame' else (n.f.get('ret') or c['r'])
-            self.f_sig.setText(f"{rt} {c['n']}({', '.join(c['p'])})" if known else 'Symbol not found in the catalog'); self.f_ret.setText((rt + (f'   (catalog: {c["r"]})' if rt != c['r'] else '')) if known else '?')
+            self.f_sig.setText(f"{rt} {c['n']}({', '.join(c['p'])})" if known else 'Symbol not found in the catalog'); self.f_ret.setText((rt + (tr('   (catalog: {0})', c['r']) if rt != c['r'] else '')) if known else '?')
             self.f_off.setText(f"0x{c['o']:x}" if known else '?'); self.f_sym.setText(n.f.get('sym', '')); self.f_sym.setCursorPosition(0)
             self.f_status.setText(('Matching (decompiled)' if c['st'] == 'M' else 'Not matching / not decompiled yet') if known else '?')
         self.set_box.setVisible(self.set_form.rowCount() > 0)
@@ -295,14 +296,14 @@ class Inspector(QScrollArea):
         hint = QLabel('Connect a node, or type a fixed value.'); hint.setStyleSheet('color:#8a91a5'); hint.setWordWrap(True); self.in_form.addRow(hint)
         for p in ins:
             if p.type == E: continue
-            lab = QLabel(f'<b>{escape(p.label)}</b><br><span style="color:#8a91a5">{escape(p.type or "any type")}</span>')
+            lab = QLabel(tr('<b>{0}</b><br><span style="color:#8a91a5">{1}</span>', escape(p.label), escape(p.type or 'any type')))
             if g.linked(n.id, p.id, 'i'):
                 w = QLabel('connected to another node'); w.setStyleSheet('color:#8a91a5;font-style:italic')
             else: w = make_editor(p.type, n.d.get(p.id, ''), lambda raw, pid=p.id: self._dflt(pid, raw))
             self.in_form.addRow(lab, w)
         for p in outs:
             if p.type == E: continue
-            self.out_form.addRow(QLabel(f'<b>{escape(p.label)}</b>'), QLabel(f'<span style="color:#8a91a5">{escape(p.type or "any type")}</span>'))
+            self.out_form.addRow(QLabel(f'<b>{escape(p.label)}</b>'), QLabel(tr('<span style="color:#8a91a5">{0}</span>', escape(p.type or 'any type'))))
         self.in_box.setVisible(self.in_form.rowCount() > 1); self.out_box.setVisible(self.out_form.rowCount() > 0)
         self.out_box.setTitle('Outputs' + ('  (values the game gives to your hook)' if n.type == 'hook' else ''))
 

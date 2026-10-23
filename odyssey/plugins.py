@@ -10,6 +10,7 @@ nodes can also live in nodes.json (a list) or nodes/*.json; see plugnodes.py for
 An optional plugin.py with  def register(api)  can do more (api.add_node, api.add_theme, api.add_action, api.log).
 Every missing piece of information gets a default (title = folder name, author "Unknown author", version "0.0.0"...).
 """
+from .i18n import tr, tr_n
 import importlib.util, json, re, shutil, sys, zipfile
 from pathlib import Path
 
@@ -85,12 +86,12 @@ class Plugin:
 
     def summary(self):
         bits = []
-        if self.catalog_size: bits.append(f'{self.catalog_size} catalog functions')
-        if self.nodes: bits.append(f"{len(self.nodes)} node{'s' if len(self.nodes) != 1 else ''}")
-        if self.templates: bits.append(f"{len(self.templates)} template{'s' if len(self.templates) != 1 else ''}")
-        if self.help: bits.append(f"{len(self.help)} help page{'s' if len(self.help) != 1 else ''}")
-        if self.themes: bits.append(f"{len(self.themes)} theme{'s' if len(self.themes) != 1 else ''}")
-        if self.actions: bits.append(f"{len(self.actions)} menu action{'s' if len(self.actions) != 1 else ''}")
+        if self.catalog_size: bits.append(tr('{0} catalog functions', self.catalog_size))
+        if self.nodes: bits.append(tr_n('{0} node', '{0} nodes', len(self.nodes)))
+        if self.templates: bits.append(tr_n('{0} template', '{0} templates', len(self.templates)))
+        if self.help: bits.append(tr_n('{0} help page', '{0} help pages', len(self.help)))
+        if self.themes: bits.append(tr_n('{0} theme', '{0} themes', len(self.themes)))
+        if self.actions: bits.append(tr_n('{0} menu action', '{0} menu actions', len(self.actions)))
         return ' · '.join(bits) or ('nothing loaded' if not self.enabled else 'no content')
 
     def can_template(self): return bool(self.templates)

@@ -1,4 +1,5 @@
 """Graph model, node definitions and exlaunch C++ generation (Qt-independent)."""
+from .i18n import tr
 import json, re
 from collections import namedtuple
 
@@ -199,7 +200,7 @@ def fields_for(n):
 
 
 def argname(c, i):
-    return 'this' if c.get('c') and i == 0 else f'arg {i + 1}'
+    return 'this' if c.get('c') and i == 0 else tr('arg {0}', i + 1)
 
 
 class Node:
@@ -441,8 +442,8 @@ class Graph:
             if T == 'callgame': c = self.sg(n); ins = [P(f'a{i}', t, argname(c, i)) for i, t in enumerate(c['p'])]
             elif T == 'callfn': m = self.fn(n); ins = [P(k, t, k) for k, t in parse_params(m.f.get('params'))] if m else []
             elif T == 'callorig': ins = []
-            elif T == 'callext': ins = [P(f'm{i}', t, f'arg {i + 1}') for i, t in enumerate(split_top(f.get('args')))]
-            else: ins = [P('a', 'void*', 'object')] + [P(f'm{i}', t, f'arg {i + 1}') for i, t in enumerate(split_top(f.get('args')))]
+            elif T == 'callext': ins = [P(f'm{i}', t, tr('arg {0}', i + 1)) for i, t in enumerate(split_top(f.get('args')))]
+            else: ins = [P('a', 'void*', 'object')] + [P(f'm{i}', t, tr('arg {0}', i + 1)) for i, t in enumerate(split_top(f.get('args')))]
             r = self.ret_type(n); outs = [P('ret', r, (f.get('save') or 'result') if not f.get('inline') else 'result')] if r != 'void' else []
             return (self.title(n), ins, outs) if f.get('inline') else (self.title(n), [ei] + ins, [en] + outs)
         if T == 'func': return self.title(n), [], [en] + [P(k, t, k) for k, t in parse_params(f.get('params'))]
@@ -468,7 +469,7 @@ class Graph:
             'cast': ([P('a', '', 'value')], [P('out', f.get('to', ''), 'result')]),
             'index': ([P('a', '', 'array'), P('b', 'int', 'index')], [P('out', '', 'element')]),
             'setindex': ([ei, P('a', '', 'array'), P('b', 'int', 'index'), P('c', '', 'value')], [en]),
-            'construct': ([P(f'm{i}', t, f'arg {i + 1}') for i, t in enumerate(split_top(f.get('args')))], [P('out', (t + '*') if f.get('new') else t, 'object')]),
+            'construct': ([P(f'm{i}', t, tr('arg {0}', i + 1)) for i, t in enumerate(split_top(f.get('args')))], [P('out', (t + '*') if f.get('new') else t, 'object')]),
             'member': ([P('a', 'void*', 'object')], [P('out', '', f.get('member', 'value'))]),
             'setmember': ([ei, P('a', 'void*', 'object'), P('b', '', 'value')], [en]),
             'readoff': ([P('a', 'void*', 'base pointer')], [P('out', t, 'value')]),
@@ -495,37 +496,37 @@ class Graph:
         declared = set(self.variable_names())
         for n in self.nodes.values():
             T, title = n.type, self.title(n)
-            if T in ('hook', 'callgame') and n.f.get('sym') not in self.cat: out.append(('err', n.id, f'{title}: symbol not found in the catalog'))
+            if T in ('hook', 'callgame') and n.f.get('sym') not in self.cat: out.append(('err', n.id, tr('{0}: symbol not found in the catalog', title)))
             if T == 'hook':
-                if n.f.get('sym') in seen_h: out.append(('err', n.id, f'{title}: this function is already hooked by another node'))
+                if n.f.get('sym') in seen_h: out.append(('err', n.id, tr('{0}: this function is already hooked by another node', title)))
                 seen_h[n.f.get('sym')] = n.id
-            if T == 'plug' and not PN.is_loaded(n.f.get('pid')): out.append(('warn', n.id, f"{title}: its plugin is not loaded (the copy saved in the graph is used)"))
+            if T == 'plug' and not PN.is_loaded(n.f.get('pid')): out.append(('warn', n.id, tr('{0}: its plugin is not loaded (the copy saved in the graph is used)', title)))
             if T in ('func', 'global'):
                 k = n.f.get('name')
-                if k in names: out.append(('err', n.id, f'Name "{k}" is defined more than once'))
+                if k in names: out.append(('err', n.id, tr('Name "{0}" is defined more than once', k)))
                 names[k] = n.id
             for key in ('name', 'save', 'variable'):
                 v = n.f.get(key)
-                if T in ('func', 'global', 'local', 'setvar', 'getvar') + CALLS and v and not IDENT.match(v): out.append(('err', n.id, f'{title}: "{v}" is not a valid C++ name'))
+                if T in ('func', 'global', 'local', 'setvar', 'getvar') + CALLS and v and not IDENT.match(v): out.append(('err', n.id, tr('{0}: "{1}" is not a valid C++ name', title, v)))
             if T in ('setvar', 'getvar') and n.f.get('variable') and n.f['variable'] not in declared:
-                out.append(('warn', n.id, f'{title}: variable "{n.f["variable"]}" is not declared anywhere'))
+                out.append(('warn', n.id, tr('{0}: variable "{1}" is not declared anywhere', title, n.f['variable'])))
             if T == 'callorig':
                 h = self.hook_of(n.id)
-                if not h: out.append(('err', n.id, f'{title}: only works inside a hook (connect it to a Hook node)'))
-                elif h.f.get('mode') == 'replace': out.append(('err', n.id, f'{title}: the hook is in Replace mode, which has no original (use Manual mode)'))
-                elif h.f.get('mode') in ('before', 'after'): out.append(('warn', n.id, f'{title}: the hook already calls the original ("{h.f.get("mode")}" mode): use Manual mode to place it yourself'))
-            if T == 'callfn' and not self.fn(n): out.append(('err', n.id, f'Call to "{n.f.get("name") or "?"}": function not defined'))
+                if not h: out.append(('err', n.id, tr('{0}: only works inside a hook (connect it to a Hook node)', title)))
+                elif h.f.get('mode') == 'replace': out.append(('err', n.id, tr('{0}: the hook is in Replace mode, which has no original (use Manual mode)', title)))
+                elif h.f.get('mode') in ('before', 'after'): out.append(('warn', n.id, tr('{0}: the hook already calls the original ("{1}" mode): use Manual mode to place it yourself', title, h.f.get('mode'))))
+            if T == 'callfn' and not self.fn(n): out.append(('err', n.id, tr('Call to "{0}": function not defined', n.f.get('name') or '?')))
             inline = T in CALLS and n.f.get('inline')
             pd = PN.plug_def(n.f.get('pid')) if T == 'plug' else None
-            if inline and self.ret_type(n) == 'void': out.append(('err', n.id, f'{title}: returns void, so it cannot be used as a value'))
-            if T == 'local' and n.id not in reach: out.append(('info', n.id, f'{title}: not inside any function, so it is declared as a global variable')); continue
+            if inline and self.ret_type(n) == 'void': out.append(('err', n.id, tr('{0}: returns void, so it cannot be used as a value', title)))
+            if T == 'local' and n.id not in reach: out.append(('info', n.id, tr('{0}: not inside any function, so it is declared as a global variable', title))); continue
             if (T in CALLS and not inline) or T in ('if', 'switch', 'for', 'while', 'local', 'setvar', 'setmember', 'setindex', 'writeoff', 'stmt', 'ret') or (pd and PN.is_flow(pd, n.f)):
-                if n.id not in reach: out.append(('warn', n.id, f'{title}: unreachable (not connected to a Hook or Function)')); continue
+                if n.id not in reach: out.append(('warn', n.id, tr('{0}: unreachable (not connected to a Hook or Function)', title))); continue
             if T in ('local', 'ret', 'hook', 'func', 'global') or (pd and pd['place']): continue
             if (inline or T in ('expr', 'literal', 'op', 'cmp', 'logic', 'not', 'addr', 'deref', 'isnull', 'cast', 'member', 'readoff', 'getvar', 'construct', 'index') or (pd and not PN.is_flow(pd, n.f) and not pd['place'])) and not any(e[0][0] == n.id for e in self.edges): continue
             for p in self.spec(n)[1]:
                 if pd and (any(i['id'] == p.id and i['default'] for i in pd['inputs']) or (pd.get('repeat') and p.id.startswith(pd['repeat']['id']))): continue  # the plugin gives a default
-                if p.type != E and not self.linked(n.id, p.id, 'i') and not str(n.d.get(p.id, '')).strip(): out.append(('warn', n.id, f'{title}: input "{p.label}" is empty (a default value is used)'))
+                if p.type != E and not self.linked(n.id, p.id, 'i') and not str(n.d.get(p.id, '')).strip(): out.append(('warn', n.id, tr('{0}: input "{1}" is empty (a default value is used)', title, p.label)))
         return out
 
     # ---------------- C++ generation ----------------

@@ -1,4 +1,5 @@
 """Typed editors for fixed input values (numbers, text, bool, vectors or any C++ expression)."""
+from .i18n import tr
 import re
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QWidget
 
@@ -19,9 +20,9 @@ def make_editor(t, value, on_change):
         m = VEC.search(value); vals = [x.strip() for x in m.groups()] if m else ['', '', '']
         w = QWidget(); h = QHBoxLayout(w); h.setContentsMargins(0, 0, 0, 0); edits = []
         for lab, v in zip('XYZ', vals):
-            e = QLineEdit(v); e.setMinimumWidth(30); e.setPlaceholderText(lab); e.setToolTip(f'{lab} component (float)'); edits.append(e); h.addWidget(e)
+            e = QLineEdit(v); e.setMinimumWidth(30); e.setPlaceholderText(lab); e.setToolTip(tr('{0} component (float)', lab)); edits.append(e); h.addWidget(e)
         def upd():
-            xs = [e.text().strip() or '0' for e in edits]; on_change('' if not any(e.text().strip() for e in edits) else f'sead::Vector3f({xs[0]}, {xs[1]}, {xs[2]})')
+            xs = [e.text().strip() or '0' for e in edits]; on_change('' if not any(e.text().strip() for e in edits) else tr('sead::Vector3f({0}, {1}, {2})', xs[0], xs[1], xs[2]))
         for e in edits: e.textEdited.connect(lambda _: upd())
         return w
     e = QLineEdit(value); e.setPlaceholderText(HINTS.get(k, f'C++ expression ({(t or "any type").strip()})')); e.textEdited.connect(on_change); return e

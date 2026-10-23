@@ -1,4 +1,5 @@
 """Dialogs around basepatch.py: offer to add what a plugin needs to the exlaunch project, show its state, remove it again."""
+from .i18n import tr
 import sys
 from pathlib import Path
 
@@ -49,8 +50,7 @@ def offer(win, pl, why=''):
     bp = BasePatch(pl, root); st = bp.status()
     if not st['project_ok']: QMessageBox.warning(win, pl.title, 'No CMakeLists.txt found. Folders looked at:\n\n' + '\n'.join(TRIED or [str(root)]) + '\n\nIn Tools > Settings, choose the folder that holds CMakeLists.txt (the root of your exlaunch project). Nothing was changed.'); return False
     if st['ready']: return True
-    box = QMessageBox(QMessageBox.Question, pl.title, (why + '\n\n' if why else '') + f'"{pl.title}" needs a few additions to your exlaunch project:\n\n• {len(st["missing"])} file(s) to copy (only the ones your project does not already have)\n'
-                      f'• CMakeLists.txt: {len(st["cmake"])} line(s) to add\n\nNothing is overwritten, a backup of CMakeLists.txt is kept, and you can take everything back from the Plugin explorer.\nAdd it now?', QMessageBox.Yes | QMessageBox.No, win)
+    box = QMessageBox(QMessageBox.Question, pl.title, (why + '\n\n' if why else '') + tr('"{0}" needs a few additions to your exlaunch project:\n\n• {1} file(s) to copy (only the ones your project does not already have)\n• CMakeLists.txt: {2} line(s) to add\n\nNothing is overwritten, a backup of CMakeLists.txt is kept, and you can take everything back from the Plugin explorer.\nAdd it now?', pl.title, len(st['missing']), len(st['cmake'])), QMessageBox.Yes | QMessageBox.No, win)
     box.setDetailedText('Files:\n' + '\n'.join('  ' + m for m in st['missing']) + '\n\nCMakeLists.txt:\n' + '\n'.join('  ' + m for m in st['cmake'])); box.setButtonText(QMessageBox.Yes, 'Add to my project'); box.setButtonText(QMessageBox.No, 'Not now')
     if box.exec() != QMessageBox.Yes: return False
     rep = bp.apply(saved_values(pl)); show_report(win, pl.title, rep); return rep.ok and bp.status()['ready']
@@ -62,8 +62,7 @@ def offer_remove(win, pl):
     if not root: return
     bp = BasePatch(pl, root)
     if not bp.manifest.is_file(): return
-    if QMessageBox.question(win, pl.title, f'"{pl.title}" is now disabled.\n\nAlso remove what it added to your exlaunch project (files and CMake lines)? '
-                            'Files you edited yourself are kept.', QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes: show_report(win, pl.title, bp.revert())
+    if QMessageBox.question(win, pl.title, tr('"{0}" is now disabled.\n\nAlso remove what it added to your exlaunch project (files and CMake lines)? Files you edited yourself are kept.', pl.title), QMessageBox.Yes | QMessageBox.No, QMessageBox.No) == QMessageBox.Yes: show_report(win, pl.title, bp.revert())
 
 
 def check_graph(win, graph):
@@ -73,15 +72,15 @@ def check_graph(win, graph):
     for pl in MANAGER.plugins:
         if pl.enabled and pl.base and pl.id in used and project_root(win.cfg):
             bp = BasePatch(pl, project_root(win.cfg))
-            if bp.is_project() and not bp.status()['ready']: offer(win, pl, f'Your graph uses "{pl.title}" nodes.')
+            if bp.is_project() and not bp.status()['ready']: offer(win, pl, tr('Your graph uses "{0}" nodes.', pl.title))
 
 
 class BaseDialog(QDialog):
     """State of a plugin's additions in the project, with Add / Repair and Remove."""
 
     def __init__(self, win, pl):
-        super().__init__(win); self.win, self.pl = win, pl; self.setWindowTitle(f'{pl.title}: exlaunch base'); self.resize(660, 580); v = QVBoxLayout(self)
-        t = QLabel((pl.base or {}).get('title') or f'{pl.title} on the exlaunch base'); t.setStyleSheet('font-size:16px;font-weight:600'); v.addWidget(t)
+        super().__init__(win); self.win, self.pl = win, pl; self.setWindowTitle(tr('{0}: exlaunch base', pl.title)); self.resize(660, 580); v = QVBoxLayout(self)
+        t = QLabel((pl.base or {}).get('title') or tr('{0} on the exlaunch base', pl.title)); t.setStyleSheet('font-size:16px;font-weight:600'); v.addWidget(t)
         self.where = QLabel(); self.where.setWordWrap(True); self.where.setStyleSheet(f"color:{C['mu']}"); v.addWidget(self.where)
         self.state = QLabel(); self.state.setWordWrap(True); v.addWidget(self.state); self.build_settings(v); self.txt = QPlainTextEdit(); self.txt.setReadOnly(True); v.addWidget(self.txt, 1)
         info = QLabel('Files are copied only when your project does not have them (nothing is overwritten). CMakeLists.txt gets one marked block and a backup (CMakeLists.txt.odn-backup). '
@@ -117,17 +116,17 @@ class BaseDialog(QDialog):
         if root:
             bp = BasePatch(self.pl, root)
             if bp.is_project() and bp.manifest.is_file():
-                try: msg = f'Written to {bp.write_config(vals)}. Rebuild your mod (make) for it to take effect.'
-                except Exception as e: msg = f'Could not write the file: {e}'
+                try: msg = tr('Written to {0}. Rebuild your mod (make) for it to take effect.', bp.write_config(vals))
+                except Exception as e: msg = tr('Could not write the file: {0}', e)
         self.note.setText(msg)
 
     def refresh(self):
         root = project_root(self.win.cfg); self.bApply.setEnabled(False); self.bRemove.setEnabled(False)
         if not root: self.where.setText('Project: (not set)'); self.state.setText('Set your exlaunch project in Settings first.'); self.txt.clear(); return
-        bp = BasePatch(self.pl, root); st = bp.status(); self.where.setText(f'Project: {root}')
-        if not st['project_ok']: self.state.setText(f'<span style="color:{C["ko"]}">No CMakeLists.txt found: set the project root in Settings.</span>'); self.txt.setPlainText('Folders looked at:\n' + '\n'.join('  ' + t for t in TRIED)); return
-        if st['ready']: self.state.setText(f'<span style="color:{C["ok"]}">Ready: everything {self.pl.title} needs is in your project.</span>' + (' (added by this editor)' if st['applied'] else ' (it was already there)'))
-        else: self.state.setText(f'<span style="color:{C["warn"]}">{len(st["missing"])} file(s) and {len(st["cmake"])} CMake line(s) are missing.</span>')
+        bp = BasePatch(self.pl, root); st = bp.status(); self.where.setText(tr('Project: {0}', root))
+        if not st['project_ok']: self.state.setText(tr('<span style="color:{0}">No CMakeLists.txt found: set the project root in Settings.</span>', C['ko'])); self.txt.setPlainText('Folders looked at:\n' + '\n'.join('  ' + t for t in TRIED)); return
+        if st['ready']: self.state.setText(tr('<span style="color:{0}">Ready: everything {1} needs is in your project.</span>', C['ok'], self.pl.title) + (' (added by this editor)' if st['applied'] else ' (it was already there)'))
+        else: self.state.setText(tr('<span style="color:{0}">{1} file(s) and {2} CMake line(s) are missing.</span>', C['warn'], len(st['missing']), len(st['cmake'])))
         self.txt.setPlainText(('Missing files:\n' + '\n'.join('  ' + m for m in st['missing']) + '\n\n' if st['missing'] else '') + ('Missing in CMakeLists.txt:\n' + '\n'.join('  ' + m for m in st['cmake']) + '\n\n' if st['cmake'] else '')
                               + ('Files added by this editor:\n' + '\n'.join('  ' + m for m in bp.load_manifest().get('added', [])) if st['applied'] else ''))
         self.bApply.setEnabled(not st['ready']); self.bApply.setText('Repair' if st['applied'] else 'Add to my project'); self.bRemove.setEnabled(st['applied'])

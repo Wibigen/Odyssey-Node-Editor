@@ -1,4 +1,4 @@
-# Odyssey Node Editor  (v7.6)
+# Odyssey Node Editor  (v7.7)
 
 A native desktop tool (Python + PySide6, no browser) for building **Super Mario Odyssey 1.0.0 exefs mods** with Blueprint-style nodes.
 It generates [exlaunch](https://github.com/shadowninja108/exlaunch) C++ that compiles against your OdysseyDecomp fork.
@@ -13,6 +13,10 @@ The setup dialog asks for your **OdysseyDecomp folder**. The tool reads `data/fi
 ## Learning the editor
 - **Help > Tutorials…** (F1): 15 short tutorials (start here, project setup, your first mod, the canvas, game functions and hooks, variables and math, flow control, your own functions, pointers, custom code, groups and library, output and building, preferences and shortcuts, plugins, troubleshooting), then the tutorials of enabled plugins in a separate *Plugin tutorials* section. The pages are the Markdown files of `tutorials/` (list in `tutorials/index.json`).
 - **Help > Interface tour…**: a guided presentation of the window. It starts the first time the program is opened; Skip / Esc ends it. Once completed or skipped it does not come back at startup (if you close the program in the middle it does).
+
+## Files and languages
+- **File > Save** (Ctrl+S) writes to the file you are editing; **Save as…** (Ctrl+Shift+S); **File > Open recent**. The window title shows the file name and a dot when there are unsaved changes.
+- **View > Language** (globe icon): English (default), Français, Deutsch, Español, Italiano, Nederlands, Русский, 日本語, 中文. Applied after a restart. Packs are `lang/<code>.json` (`{"English text": "translation"}`); a copy in your data folder's `lang/` overrides or adds a language. Plugin content stays in English unless the plugin brings its own translations.
 
 ## Using it
 - **Add game function** (Ctrl+F, the red button, or right-click on the canvas): a full window to search functions, see signature / return type / offset / symbol, then choose **Call** or **Hook**. For a call, every argument is either *Connect a node* or a *Fixed value* (number, text, bool, `Vector3` X/Y/Z, any C++ expression). The result can be saved in a variable, or used directly as a value in other blocks. A button next to each function opens it in a GitHub search of OdysseyDecomp. If the catalog says *void* for a function that really returns something, use **Change...** next to the return type (a warning asks you to confirm).

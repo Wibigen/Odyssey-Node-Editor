@@ -7,7 +7,7 @@ if exist "OdysseyNodes.exe" del /q "OdysseyNodes.exe"
 
 py -3 -m pip install -r requirements.txt pyinstaller
 
-py -3 -m PyInstaller --noconsole --onefile --name OdysseyNodes --icon "assets\logo.ico" --add-data "assets;assets" --add-data "plugins;plugins" --add-data "tutorials;tutorials" --collect-submodules odyssey odyssey_nodes.py
+py -3 -m PyInstaller --noconsole --onefile --name OdysseyNodes --icon "assets\logo.ico" --add-data "assets;assets" --add-data "plugins;plugins" --add-data "tutorials;tutorials" --add-data "lang;lang" --collect-submodules odyssey odyssey_nodes.py
 
 if exist "dist\OdysseyNodes.exe" (
     move /y "dist\OdysseyNodes.exe" "%BASE_DIR%" >nul

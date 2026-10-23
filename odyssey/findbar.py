@@ -2,6 +2,7 @@
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QWidget
 
+from .i18n import tr
 from .icons import bind
 from .theme import C
 
@@ -37,7 +38,7 @@ class FindBar(QWidget):
         p = self.parentWidget(); self.adjustSize(); self.move(max(8, p.width() - self.width() - 16), 12)
 
     def set_count(self, n, cur=0):
-        self.count.setText('' if not self.edit.text().strip() else ('no match' if n == 0 else f'{cur}/{n}' if cur else f'{n} found'))
+        self.count.setText('' if not self.edit.text().strip() else ('no match' if n == 0 else f'{cur}/{n}' if cur else tr('{0} found', n)))
         self.count.setStyleSheet(f"color:{C['ko'] if self.edit.text().strip() and n == 0 else C['mu']}")
 
     def keyPressEvent(self, ev):

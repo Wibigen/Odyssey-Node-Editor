@@ -20,7 +20,7 @@ LIBDIR.mkdir(parents=True, exist_ok=True)
 NOWIN = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
 DEFAULTS = dict(decomp_dir='', project_dir='', main_cpp='', build_cmd='cmake --build build', build_env='', wsl_distro='', demangler='',
-                plugins_disabled=[], plugins_enabled=[], plugin_data={}, tour_done=False, shortcuts={}, filter=r'^(al|rs)::|^(StageScene|PlayerActorHakoniwa|GameDataFunction|PlayerFunction)::', ret_overrides={}, favorites=[],
+                plugins_disabled=[], plugins_enabled=[], plugin_data={}, tour_done=False, recent=[], last_file='', language='en', shortcuts={}, filter=r'^(al|rs)::|^(StageScene|PlayerActorHakoniwa|GameDataFunction|PlayerFunction)::', ret_overrides={}, favorites=[],
                 # preferences
                 pref_startup='session', pref_autosave=True, pref_grid=True, pref_snap=False, pref_code_size=10, pref_wrap=False, pref_highlight=True, pref_ui_size=13, pref_confirm_new=True, pref_install='symbol', pref_new='startup', pref_links_top=False, pref_autogroup=True, pref_theme='dark', pref_accent='Red', pref_dropmenu=True, pref_linenumbers=True, pref_calls='direct',
                 # Ryujinx tab

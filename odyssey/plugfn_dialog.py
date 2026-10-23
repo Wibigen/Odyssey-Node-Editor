@@ -3,6 +3,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit, QPushButton, QSplitter, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
+from .i18n import tr
 from . import plugnodes as PN
 from .icons import bind
 from .theme import C
@@ -56,7 +57,7 @@ class PluginFunctionDialog(QDialog):
             if searching and sc < best[0]: best = (sc, it)
         for key, top in tops.items(): top.setText(0, f'{key}  ({top.childCount()})'); top.setExpanded(searching and n < 300)
         self.tree.sortItems(0, Qt.AscendingOrder) if False else None
-        self.tree.setUpdatesEnabled(True); self.count.setText(f'{n} result(s)' if searching or self.plug.currentData() or self.kind.currentData() else f'{n} entries')
+        self.tree.setUpdatesEnabled(True); self.count.setText(tr('{0} result(s)', n) if searching or self.plug.currentData() or self.kind.currentData() else tr('{0} entries', n))
         first = best[1] if best[1] is not None else next((top.child(0) for top in tops.values() if top.isExpanded() and top.childCount()), None)
         if first is not None: first.parent().setExpanded(True)
         if first: self.tree.setCurrentItem(first)
@@ -77,7 +78,7 @@ class PluginFunctionDialog(QDialog):
         if d['both']: bits.append('Right-click the node > "Use as a value" to use the result directly inside another node.')
         if e.get('va'): bits.append('Variable arguments: set their number in the inspector (like printf).')
         if any('*' in p[0] and 'char' not in p[0] for p in e.get('p') or []): bits.append('Pointer inputs: type &variable (or use the "Address of" node).')
-        self.hint.setText('\n'.join(bits + ([f'Adds #include {inc}'] if inc else [])))
+        self.hint.setText('\n'.join(bits + ([tr('Adds #include {0}', inc)] if inc else [])))
 
     def add(self):
         pid = self.cur_pid()

@@ -5,7 +5,7 @@ not shown at startup again. Closing the program in the middle leaves it unmarked
 """
 from PySide6.QtCore import QEvent, QPoint, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QMenu, QPushButton, QVBoxLayout, QWidget
 
 from .theme import C
 
@@ -17,7 +17,7 @@ def _rect(win, w):
 
 
 def _menu_rect(win, title):
-    mb = win.menuBar(); m = next((x for x in mb.actions() if x.text().replace('&', '') == title), None)
+    mb = win.menuBar(); menu = mb.findChild(QMenu, 'menu.' + title); m = menu.menuAction() if menu else None
     if m is None or not mb.isVisible(): return None
     r = mb.actionGeometry(m); return QRect(mb.mapTo(win, r.topLeft()), r.size())
 

@@ -7,6 +7,7 @@ from PySide6.QtGui import QBrush, QColor, QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QFrame, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
                                QScrollArea, QSplitter, QStackedWidget, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget)
 
+from .i18n import tr
 from .graph import IDENT, MODES, argname
 from .icons import bind, icon
 from .rettype import ask_ret_type, remember
@@ -60,7 +61,7 @@ class ArgRow(QFrame):
     def __init__(self, label, t, value=''):
         super().__init__(); self.setObjectName('row'); self.v = value or ''
         lay = QVBoxLayout(self); lay.setContentsMargins(10, 8, 10, 8); lay.setSpacing(6)
-        head = QHBoxLayout(); lab = QLabel(f'<b>{escape(label)}</b>  <span style="color:#8a91a5">{escape(t)}</span>'); lab.setWordWrap(True); head.addWidget(lab, 1)
+        head = QHBoxLayout(); lab = QLabel(tr('<b>{0}</b>  <span style="color:#8a91a5">{1}</span>', escape(label), escape(t))); lab.setWordWrap(True); head.addWidget(lab, 1)
         self.mode = QComboBox(); self.mode.addItem('Connect a node', 0); self.mode.addItem('Fixed value', 1); head.addWidget(self.mode); lay.addLayout(head)
         self.editor = make_editor(t, self.v, self._set); lay.addWidget(self.editor)
         self.mode.setCurrentIndex(1 if self.v else 0); self.editor.setVisible(bool(self.v)); self.mode.currentIndexChanged.connect(lambda i: self.editor.setVisible(i == 1))
@@ -77,7 +78,7 @@ class FunctionDialog(QDialog):
         # ---- left: search ----
         self.left = QWidget(); l = QVBoxLayout(self.left); l.setContentsMargins(0, 0, 8, 0)
         self.q = QLineEdit(); self.q.setPlaceholderText('Search by name…  e.g. setTrans, exePlay, PlayerActorHakoniwa::'); self.q.setClearButtonEnabled(True); l.addWidget(self.q)
-        row = QHBoxLayout(); self.grp = QComboBox(); self.grp.addItem(f'All groups ({len(catalog)})', '')
+        row = QHBoxLayout(); self.grp = QComboBox(); self.grp.addItem(tr('All groups ({0})', len(catalog)), '')
         for p, n in Counter(c['n'].split('::')[0] for c in catalog if '::' in c['n']).most_common(40): self.grp.addItem(f'{p}  ({n})', p)
         self.only = QCheckBox('Only decompiled (matching)'); self.favonly = QCheckBox('Favorites only'); self.favonly.setIcon(icon('star_fill', '#e6b422', 16)); self.favonly.setToolTip('Click the star at the end of a row to make a function a favorite. Favorites are listed first.'); row.addWidget(self.grp, 1); row.addWidget(self.only); row.addWidget(self.favonly); l.addLayout(row)
         self.tree = ClickTree(); self.tree.setColumnCount(6); self.tree.setHeaderLabels(['Function', 'Returns', 'Args', 'Status', '', '']); self.tree.setRootIsDecorated(False); self.tree.setUniformRowHeights(True)
@@ -129,8 +130,8 @@ class FunctionDialog(QDialog):
         for i in hits[:MAX_ROWS]:
             c = self.cat[i]; it = QTreeWidgetItem([c['n'], c['r'], str(len(c['p'])), 'matching' if c['st'] == 'M' else 'not matched']); it.setData(0, Qt.UserRole, i)
             it.setToolTip(0, f"{c['r']} {c['n']}({', '.join(c['p'])})"); self.tree.addTopLevelItem(it)
-            it.setIcon(4, icon('link', 'mu', 16)); it.setToolTip(4, f'Search "{short_name(c["n"])}" in OdysseyDecomp on GitHub'); self.paint_star(it, c['s'] in self.favs)
-        self.count.setText(f'{len(hits)} function(s)' + (f' - showing the first {MAX_ROWS}, refine your search' if len(hits) > MAX_ROWS else ''))
+            it.setIcon(4, icon('link', 'mu', 16)); it.setToolTip(4, tr('Search "{0}" in OdysseyDecomp on GitHub', short_name(c['n']))); self.paint_star(it, c['s'] in self.favs)
+        self.count.setText(tr('{0} function(s)', len(hits)) + (tr(' - showing the first {0}, refine your search', MAX_ROWS) if len(hits) > MAX_ROWS else ''))
         if hits: self.tree.setCurrentItem(self.tree.topLevelItem(0))
         else: self.cur = None; self.ok.setEnabled(False)
 
@@ -152,7 +153,7 @@ class FunctionDialog(QDialog):
 
     def show_ret(self):
         c = self.cur; r = self.eff_ret()
-        self.sig.setText(f"{r} {c['n']}({', '.join(c['p'])})"); self.i_ret.setText(f'<b>{escape(r)}</b>' + (f' <span style="color:#e6b673">(catalog: {escape(c["r"])})</span>' if r != c['r'] else ''))
+        self.sig.setText(f"{r} {c['n']}({', '.join(c['p'])})"); self.i_ret.setText(f'<b>{escape(r)}</b>' + (tr(' <span style="color:#e6b673">(catalog: {0})</span>', escape(c['r'])) if r != c['r'] else ''))
         vis = r != 'void' and c.get('k') != 'c'; self.save.setVisible(vis); self.save_l.setVisible(vis); self.inline.setVisible(vis)
         if r == 'void': self.inline.setChecked(False)
 
@@ -175,7 +176,7 @@ class FunctionDialog(QDialog):
         while len(self.rows): r = self.rows.pop(); r.setParent(None); r.deleteLater()
         for i, t in enumerate(c['p']):
             row = ArgRow(argname(c, i), t, preset.get(f'a{i}', '')); self.rows.append(row); self.args_l.insertWidget(self.args_l.count() - 1, row)
-        self.args_hint.setText(f"This function takes {len(c['p'])} argument(s). For each one, connect a node or type a fixed value." if c['p'] else 'This function takes no arguments.')
+        self.args_hint.setText(tr('This function takes {0} argument(s). For each one, connect a node or type a fixed value.', len(c['p'])) if c['p'] else 'This function takes no arguments.')
         self.show_ret()
 
     def start_edit(self):
@@ -188,7 +189,7 @@ class FunctionDialog(QDialog):
     def try_accept(self):
         if self.cur is None: return
         s = self.save.text().strip()
-        if self.rCall.isChecked() and s and not IDENT.match(s): self.err.setText(f'"{s}" is not a valid C++ variable name.'); return
+        if self.rCall.isChecked() and s and not IDENT.match(s): self.err.setText(tr('"{0}" is not a valid C++ variable name.', s)); return
         self.accept()
 
     def result(self):

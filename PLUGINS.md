@@ -158,3 +158,6 @@ A catalog is a big list of functions that are not loaded as individual nodes: th
   Each field is a list of `[value, label]` options; `$id` in the template is replaced by the chosen value (only listed values are accepted); `enabled_if` greys a field unless the other fields have the given values. The file is rewritten when a choice changes and removed by *Remove*.
 * `<project>/.odn/base_<plugin>.json` records what was added, so *Remove* takes back exactly that (files you edited since are kept).
 * The editor offers the patch when the plugin is enabled, when one of its templates is loaded and before writing a graph that uses it.
+
+## Translating a plugin
+The editor's own texts are translated by `lang/<code>.json`. Plugin names, node titles and help pages are not: they show as you wrote them. To offer help pages in other languages, put them in `help/<code>/` (for example `help/fr/using_imgui.md`); the editor opens the page of the interface language and falls back to the file next to it (English).

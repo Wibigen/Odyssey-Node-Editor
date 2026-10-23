@@ -3,6 +3,7 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap, QFont, QFontMetricsF, QPainter, QPainterPath, QPainterPathStroker, QPen, QPolygonF, QTransform
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsPathItem, QGraphicsScene, QGraphicsView, QMenu
 
+from .i18n import tr, tr_n
 from .graph import CALLS, COLOR_NAMES, E
 from .theme import C, HEAD_COLORS, pin_color
 
@@ -130,7 +131,7 @@ class NodeItem(QGraphicsItem):
         if hit:
             pin = next(p for p in (self.ins if hit[1] == 'i' else self.outs) if p.id == hit[0])
             fixed = self.node.d.get(pin.id, '') if hit[1] == 'i' and not self.scn.graph.linked(self.node.id, pin.id, 'i') else ''
-            self.setToolTip(f"{pin.label or 'execution'}: " + ('execution flow' if pin.type == E else (pin.type or 'any type')) + (f'\nfixed value: {fixed}' if fixed else ''))
+            self.setToolTip(f"{pin.label or 'execution'}: " + ('execution flow' if pin.type == E else (pin.type or 'any type')) + (tr('\nfixed value: {0}', fixed) if fixed else ''))
         else: self.setToolTip(self.title)
         super().hoverMoveEvent(ev)
 
@@ -177,7 +178,7 @@ class GroupItem(QGraphicsItem):
         b = QColor(col); b.setAlpha(230 if self.isSelected() else 150); p.setPen(QPen(b, 2.6 if self.isSelected() else 1.6)); p.setBrush(Qt.NoBrush); p.drawPath(body)
         p.setFont(F_TITLE); p.setPen(Qt.white); n = len(d.get('nodes', []))
         p.drawText(self.head().adjusted(12, 0, -12, 0), Qt.AlignVCenter | Qt.AlignLeft, FM_T.elidedText(d.get('name', 'Group'), Qt.ElideRight, r.width() - 90))
-        p.setFont(F_PIN); p.setPen(QColor(255, 255, 255, 170)); p.drawText(self.head().adjusted(12, 0, -12, 0), Qt.AlignVCenter | Qt.AlignRight, f'{n} node{"s" if n != 1 else ""}')
+        p.setFont(F_PIN); p.setPen(QColor(255, 255, 255, 170)); p.drawText(self.head().adjusted(12, 0, -12, 0), Qt.AlignVCenter | Qt.AlignRight, tr_n('{0} node', '{0} nodes', n))
 
     def mousePressEvent(self, ev):
         if ev.button() == Qt.LeftButton: self._last = ev.scenePos(); self.setCursor(Qt.ClosedHandCursor)
@@ -416,7 +417,7 @@ class GraphScene(QGraphicsScene):
                 ac.triggered.connect(lambda _=False, n=it.node: self._toggle_inline(n))
             m.addAction('Find in the graph…\tCtrl+F', lambda: self.find_request.emit(self.search_term(it.node)))
             m.addAction('Group selected nodes\tCtrl+G', lambda: self.request.emit('group', 0))
-            for gid in self.group_under(it.node.id): m.addAction(swatch(self.graph.groups[gid].get('color', '#3a7bd5')), f'Put into the group "{self.graph.groups[gid].get("name", "Group")}"', lambda _=False, gid=gid: self._add_sel(gid))
+            for gid in self.group_under(it.node.id): m.addAction(swatch(self.graph.groups[gid].get('color', '#3a7bd5')), tr('Put into the group "{0}"', self.graph.groups[gid].get('name', 'Group')), lambda _=False, gid=gid: self._add_sel(gid))
             if self.graph.groups:
                 am = m.addMenu('Add to group')
                 for gid, gv in self.graph.groups.items(): am.addAction(swatch(gv.get('color', '#3a7bd5')), gv.get('name', 'Group'), lambda _=False, gid=gid: self._add_sel(gid))

@@ -18,6 +18,7 @@ A plugin asks for it in plugin.json:
   Values are checked against the options (nothing else can reach the C++ file); the file is rewritten by the editor each time a choice changes.
 * What was added is recorded in <project>/.odn/base_<plugin>.json, so "Remove" can take back exactly that and nothing else.
 """
+from .i18n import tr
 import hashlib, json, os, re, shutil
 from pathlib import Path
 
@@ -119,19 +120,19 @@ class BasePatch:
         r = dict(project_ok=self.is_project(), missing=[], cmake=[], ready=False, applied=self.manifest.is_file())
         if not r['project_ok']: return r
         keys, full = self.project_keys(); r['missing'] = [p for p in self.payload() if self.state_of(p, keys, full) == 'missing']
-        pc = self.cmake_pieces(own_block=True); r['cmake'] = [f'definition {d}' for d in pc['defs']] + [f'include folder {d}' for d in pc['dirs']] + [f'sources {g}' for g in pc['globs']] + [f'embedded binary {e}' for e in pc['embed']]
+        pc = self.cmake_pieces(own_block=True); r['cmake'] = [tr('definition {0}', d) for d in pc['defs']] + [tr('include folder {0}', d) for d in pc['dirs']] + [tr('sources {0}', g) for g in pc['globs']] + [tr('embedded binary {0}', e) for e in pc['embed']]
         if self.has_block() and f'(rev {REV},' not in self.cmake_text().split(END.format(self.pl.id))[0].split(BEGIN.format(self.pl.id))[-1].split('\n')[0]: r['cmake'].append('replace the CMake block of an older version')
         r['ready'] = not r['missing'] and not r['cmake']; return r
 
     # ---------- apply ----------
     def apply(self, values=None):
         rep = Report()
-        if not self.is_project(): rep.ok = False; rep.add(f'Not an exlaunch CMake project (no CMakeLists.txt in {self.proj}).'); return rep
+        if not self.is_project(): rep.ok = False; rep.add(tr('Not an exlaunch CMake project (no CMakeLists.txt in {0}).', self.proj)); return rep
         keys, full = self.project_keys(); mf = self.load_manifest(); added = list(mf.get('added', [])); hashes = dict(mf.get('hashes', {})); copied = 0
         for rel in self.payload():
             if self.state_of(rel, keys, full) == 'ok': continue
             dst = self.proj / rel; dst.parent.mkdir(parents=True, exist_ok=True); shutil.copyfile(self.root / rel, dst); added.append(rel); hashes[rel] = sha1(dst); copied += 1
-        rep.add(f'{copied} file(s) copied into the project, {len(self.payload()) - copied} already there (left untouched).')
+        rep.add(tr('{0} file(s) copied into the project, {1} already there (left untouched).', copied, len(self.payload()) - copied))
         if self.settings() and not (self.proj / self.settings()['file']).exists():
             self.manifest.parent.mkdir(parents=True, exist_ok=True); added.append(self.settings()['file']); (self.proj / self.settings()['file']).parent.mkdir(parents=True, exist_ok=True)
             (self.proj / self.settings()['file']).write_text(self.config_text(values), 'utf-8'); hashes[self.settings()['file']] = sha1(self.proj / self.settings()['file']); rep.add('Generated ' + self.settings()['file'] + ' from your choices.')
@@ -143,11 +144,11 @@ class BasePatch:
         if pc['embed'] and not self.embed_function():
             rep.warn('target_embed_binaries() is not defined in your CMake files (it comes with cmake/SwitchTools.cmake of the SMO exlaunch base): the shader file cannot be embedded until it is.')
         self.manifest.parent.mkdir(parents=True, exist_ok=True); self.manifest.write_text(json.dumps(dict(plugin=self.pl.id, version=self.pl.version, added=added, hashes=hashes, block=bool(block) or mf.get('block', False)), indent=1), 'utf-8')
-        for u in self.unresolved(): rep.warn(f'#include "{u[0]}" in {u[1]} is not found in the include folders of your project.')
+        for u in self.unresolved(): rep.warn(tr('#include "{0}" in {1} is not found in the include folders of your project.', u[0], u[1]))
         rep.add('Rebuild: CMake picks up the new files at the next build.'); return rep
 
     def pieces_text(self, pc):
-        return [x for x in ((f"{len(pc['defs'])} definition(s)" if pc['defs'] else ''), (f"{len(pc['dirs'])} include folder(s)" if pc['dirs'] else ''), ('sources ' + ', '.join(pc['globs']) if pc['globs'] else ''), ('embedded ' + ', '.join(os.path.basename(e) for e in pc['embed']) if pc['embed'] else '')) if x]
+        return [x for x in ((tr('{0} definition(s)', len(pc['defs'])) if pc['defs'] else ''), (tr('{0} include folder(s)', len(pc['dirs'])) if pc['dirs'] else ''), ('sources ' + ', '.join(pc['globs']) if pc['globs'] else ''), ('embedded ' + ', '.join(os.path.basename(e) for e in pc['embed']) if pc['embed'] else '')) if x]
 
     def block(self, pc):
         if not (pc['defs'] or pc['dirs'] or pc['globs'] or pc['embed']): return ''
@@ -207,7 +208,7 @@ class BasePatch:
             p = self.proj / rel
             if not p.is_file(): continue
             if sha1(p) == mf.get('hashes', {}).get(rel): p.unlink(); gone += 1
-            else: kept += 1; rep.warn(f'{rel} was edited after it was added: left in place.')
+            else: kept += 1; rep.warn(tr('{0} was edited after it was added: left in place.', rel))
         for rel in sorted(mf.get('added', []), key=len, reverse=True):  # remove the folders that became empty
             d = (self.proj / rel).parent
             while d != self.proj and d.is_dir() and not any(d.iterdir()): d.rmdir(); d = d.parent
@@ -217,7 +218,7 @@ class BasePatch:
             if bk.is_file() and bk.read_text('utf-8', 'replace').rstrip() == self.cmake_text().rstrip(): shutil.copyfile(bk, self.cmakef); bk.unlink()  # CMakeLists.txt is exactly as before: the backup is not needed any more
         if self.manifest.is_file(): self.manifest.unlink()
         if self.manifest.parent.is_dir() and not any(self.manifest.parent.iterdir()): self.manifest.parent.rmdir()
-        rep.add(f'{gone} file(s) removed' + (f', {kept} kept' if kept else '') + '. Files that were already in your project were never touched.'); return rep
+        rep.add(tr('{0} file(s) removed', gone) + (tr(', {0} kept', kept) if kept else '') + '. Files that were already in your project were never touched.'); return rep
 
     # ---------- verification ----------
     def include_dirs(self):

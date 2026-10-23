@@ -5,6 +5,7 @@ from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QFileDialog, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
 
+from .i18n import tr
 from . import ryujinx as R
 from .config import save_config
 from .icons import bind
@@ -59,7 +60,7 @@ class RyujinxDialog(QDialog):
         elif d: self.dstat.setText('This folder does not look like Ryujinx data (no mods / Config.json inside)'); self.dstat.setStyleSheet(f'color:{KO}')
         else: self.dstat.setText('Not detected: enter it (Ryujinx: File > Open Ryujinx Folder shows where it is)'); self.dstat.setStyleSheet(f'color:{KO}')
         m = self.mod.text().strip()
-        self.dest.setText(f'Files will go to: {Path(R.norm(d)) / "mods" / "contents" / R.TITLE_ID / m / "exefs"}' if d and m else '')
+        self.dest.setText(tr('Files will go to: {0}', Path(R.norm(d)) / 'mods' / 'contents' / R.TITLE_ID / m / 'exefs') if d and m else '')
 
     def values(self):
         n = R.norm
@@ -87,10 +88,10 @@ class RyujinxPanel(QWidget):
 
     def refresh(self):
         p = R.problems(self.cfg)
-        if p: self.status.setText('To set up: ' + ' · '.join(p) + '.  Click "Settings…".'); self.status.setStyleSheet(f'color:{KO}')
+        if p: self.status.setText(tr('To set up: ') + ' · '.join(tr(x) for x in p) + tr('.  Click "Settings…".')); self.status.setStyleSheet(f'color:{KO}')
         else:
             b = R.build_dir(self.cfg); n = len(R.find_files(b, self.cfg.get('ryu_files'))) if b else 0
-            self.status.setText(f'Ready. Mod: {R.mod_dir(self.cfg) / "exefs"}   ·   {n} compiled file(s) in {b}' if n else f'Ready, but no compiled file in {b} yet: compile first.'); self.status.setStyleSheet(f'color:{OK if n else "#c98a2b"}')
+            self.status.setText(tr('Ready. Mod: {0}   ·   {1} compiled file(s) in {2}', R.mod_dir(self.cfg) / 'exefs', n, b) if n else tr('Ready, but no compiled file in {0} yet: compile first.', b)); self.status.setStyleSheet(f'color:{OK if n else "#c98a2b"}')
 
     def settings(self):
         c = dict(self.cfg)
@@ -103,8 +104,8 @@ class RyujinxPanel(QWidget):
         c = self.cfg; miss = [m for m in R.problems(c) if (launch or 'executable' not in m and 'Game' not in m)]
         if not install: miss = [m for m in miss if 'data' not in m and 'Mod folder' not in m]
         if miss:
-            self.say('Missing: ' + '; '.join(miss)); self.refresh()
-            if QMessageBox.question(self, 'Ryujinx', 'Some settings are missing:\n\n• ' + '\n• '.join(miss) + '\n\nOpen the settings?') == QMessageBox.Yes: self.settings()
+            self.say(tr('Missing: ') + '; '.join(tr(x) for x in miss)); self.refresh()
+            if QMessageBox.question(self, 'Ryujinx', tr('Some settings are missing:\n\n• ') + '\n• '.join(tr(x) for x in miss) + tr('\n\nOpen the settings?')) == QMessageBox.Yes: self.settings()
             return not [m for m in R.problems(self.cfg) if m in miss]
         return True
 
@@ -112,13 +113,13 @@ class RyujinxPanel(QWidget):
         if not self.need(True, False): return False
         try: dest, names = R.install(self.cfg)
         except RuntimeError as e: self.say('' + str(e)); self.refresh(); return False
-        self.say(f'Mod folder emptied, then copied {", ".join(names)} to {dest}'); self.refresh(); return True
+        self.say(tr('Mod folder emptied, then copied {0} to {1}', ', '.join(names), dest)); self.refresh(); return True
 
     def do_launch(self):
         if not self.need(False, True): return False
         if self.cfg.get('ryu_disable_others', True):
             try:
-                off = R.disable_others(self.cfg); self.say(f'Other mods turned off: {", ".join(off)}' if off else 'No other active mod.')
+                off = R.disable_others(self.cfg); self.say(tr('Other mods turned off: {0}', ', '.join(off)) if off else 'No other active mod.')
             except RuntimeError as e: self.say('' + str(e) + '\n  The game is started anyway.')
         try: a, p, log = R.launch(self.cfg)
         except RuntimeError as e: self.say('' + str(e)); return False
@@ -128,10 +129,10 @@ class RyujinxPanel(QWidget):
     def check_launch(self):
         """Three seconds later: is Ryujinx still there? (the old 'ok' only meant that the process had been created)"""
         p, log = self.proc; code = p.poll()
-        if code is None: self.say(f'Ryujinx is running (pid {p.pid}).'); return
+        if code is None: self.say(tr('Ryujinx is running (pid {0}).', p.pid)); return
         try: tail = '\n'.join(Path(log).read_text('utf-8', 'replace').strip().splitlines()[-15:])
         except OSError: tail = ''
-        self.say(f'Ryujinx closed right after starting (exit code {code}).' + (f'\n{tail}' if tail else '') + f'\nFull output: {log}\nTry the same command by hand in a terminal; check the game file path and the extra options.')
+        self.say(tr('Ryujinx closed right after starting (exit code {0}).', code) + (f'\n{tail}' if tail else '') + tr('\nFull output: {0}\nTry the same command by hand in a terminal; check the game file path and the extra options.', log))
 
     def go(self):
         if not self.need(True, True): return

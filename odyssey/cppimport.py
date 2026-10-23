@@ -1,5 +1,6 @@
 """Best-effort conversion of C++ (exlaunch mod code) into a node graph. Anything it cannot understand becomes a
 "Custom statement" / "Custom expression" node holding the original text, so the generated code stays equivalent."""
+from .i18n import tr
 import re
 
 from .graph import Graph, parse_params
@@ -410,14 +411,14 @@ class Importer:
             return n
         if callee[0] == 'cast' and callee[3] == 'reinterpret_cast' and callee[5][0] == 'call' and callee[5][3][0] == 'id' and callee[5][3][3].endswith('GetTargetOffset') and callee[5][4] and callee[5][4][0][0] == 'num':
             c = self.offs.get(int(callee[5][4][0][3].rstrip('uUlL'), 0))
-            if not c: self.report.append(f'No catalog function at offset {callee[5][4][0][3]}: kept as custom code'); return None
+            if not c: self.report.append(tr('No catalog function at offset {0}: kept as custom code', callee[5][4][0][3])); return None
             m = re.match(r'\s*(.+?)\s*\(\*\)', callee[4]); rt = m[1] if m else ''
             n = self.node('callgame', {'sym': c['s'], 'save': save, 'inline': inline, 'rtype': rt if rt and rt != c['r'] else ''})
             for i, a in enumerate(args[:len(c['p'])]): self.feed(a, n.id, f'a{i}')
             return n
         if callee[0] == 'id' and callee[3] == 'Orig':  # the original function inside a hook (arguments are the hook's own)
             n = self.node('callorig', f)
-            if [p.raw(a[1], a[2]).strip() for a in args] != self.hook_args: self.report.append(f'Orig({", ".join(p.raw(a[1], a[2]) for a in args)}) uses other arguments than the hook\'s: the hook arguments are used')
+            if [p.raw(a[1], a[2]).strip() for a in args] != self.hook_args: self.report.append(tr("Orig({0}) uses other arguments than the hook's: the hook arguments are used", ', '.join((p.raw(a[1], a[2]) for a in args))))
             return n
         if callee[0] == 'id' and callee[3] in self.funcs:
             fn = self.funcs[callee[3]]; n = self.node('callfn', {'name': callee[3], **f})
@@ -432,7 +433,7 @@ class Importer:
                 pri = [e for e in cs if e['n'].split('::')[0] in ('al', 'rs')]
                 if len({e['n'] for e in pri}) == 1: cs = pri
             if cs and len({e['n'] for e in cs}) == 1: return self.game_call(p, cs[0], args, f, declared, 0)
-            if cs: self.report.append(f'{callee[3]}: several catalog functions match ({", ".join(sorted({e["n"] for e in cs})[:3])}...); kept as a call by name')
+            if cs: self.report.append(tr('{0}: several catalog functions match ({1}...); kept as a call by name', callee[3], ', '.join(sorted({e['n'] for e in cs})[:3])))
         if callee[0] == 'member' and callee[5] != 'Orig':
             cs = [e for e in self.bymethod.get(callee[5], []) if len(e['p']) == len(args) + 1]  # obj->method(args): a member of a catalog class, when the name is not ambiguous
             if cs and len({e['n'] for e in cs}) == 1:
@@ -582,7 +583,7 @@ class Importer:
                     ret = ' '.join(h.x for h in head[:hp - 1] if h.x not in QUAL and h.k != 'str' and h.x != 'extern').replace(' ::', '::').replace(':: ', '::').replace(' *', '*').replace(' &', '&').strip()
                     if name == 'exl_main': self.scan_installs(P, j + 1, end, installs)
                     elif name != 'exl_exception_entry': items.append(('func', name, ret or 'void', P.raw(a + hp + 1, close), j + 1, end))
-                else: self.report.append(f'Skipped a block that is not a function: {P.raw(a, min(j, a + 4))}...')
+                else: self.report.append(tr('Skipped a block that is not a function: {0}...', P.raw(a, min(j, a + 4))))
                 i = end + 1
                 if i < len(t) and t[i].x == ';': i += 1
             else:
@@ -619,12 +620,12 @@ class Importer:
         arrange(g)
         for name, ids in groups: g.make_group(ids, name)
         n = len([1 for x in g.nodes.values() if x.type == 'stmt' and x.f.get('tpl') != ''])
-        self.report.insert(0, f'{len(g.nodes)} nodes, {len(g.edges)} links' + (f'; {n} custom statement(s) keep code that could not be turned into blocks' if n else ''))
+        self.report.insert(0, tr('{0} nodes, {1} links', len(g.nodes), len(g.edges)) + (tr('; {0} custom statement(s) keep code that could not be turned into blocks', n) if n else ''))
         return self.report
 
     def safe_block(self, P, a, b):
         try: return P.block(a, b)
-        except ParseError as e: self.report.append(f'Could not parse a function body ({e}); kept as custom code'); return [('raw', P.raw(a, b))] if b > a else []
+        except ParseError as e: self.report.append(tr('Could not parse a function body ({0}); kept as custom code', e)); return [('raw', P.raw(a, b))] if b > a else []
 
     def scan_installs(self, P, a, b, out):
         for q in range(a, b - 5):
@@ -634,11 +635,11 @@ class Importer:
 
     def hook(self, P, it, installs, groups):
         _, name, a, b = it[:4]; replace_macro = len(it) > 4 and it[4]; q = next((k for k in range(a, b) if P.t[k].x == 'Callback' and P.t[k + 1].x == '('), None)
-        if q is None: self.report.append(f'{name}: no Callback function found'); return
+        if q is None: self.report.append(tr('{0}: no Callback function found', name)); return
         close = P.match(q + 1); params = P.raw(q + 2, close); ret = ' '.join(t.x for t in P.t[a:q] if t.x not in QUAL).strip() or 'void'
         bo = next(k for k in range(close, b) if P.t[k].x == '{'); body = self.safe_block(P, bo + 1, P.match(bo))
         off = installs.get(name); c = (self.g.cat.get(off) if isinstance(off, str) else self.offs.get(off)) if off is not None else None
-        if c is None: self.report.append(f'{name}: ' + (f'no catalog function at {off if isinstance(off, str) else hex(off)}' if off is not None else 'no InstallAtOffset / InstallAtSymbol found') + '; the hook keeps an unknown symbol, pick the function by hand (Edit this block)')
+        if c is None: self.report.append(f'{name}: ' + (tr('no catalog function at {0}', off if isinstance(off, str) else hex(off)) if off is not None else 'no InstallAtOffset / InstallAtSymbol found') + '; the hook keeps an unknown symbol, pick the function by hand (Edit this block)')
         names = [nm for nm, _ in parse_params(params)]
         mode, orig_name = 'replace', None
         n_orig = sum(1 for k in range(bo + 1, P.match(bo)) if P.t[k].x == 'Orig' and P.t[k + 1].x == '(')

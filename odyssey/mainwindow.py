@@ -1,4 +1,6 @@
 """Main window: node canvas, block palette, inspector, generated code, problems, build."""
+from .i18n import tr, tr_n
+from . import i18n
 import os, re, time
 from pathlib import Path
 from PySide6.QtCore import QPointF, QSettings, QSize, Qt, QTimer
@@ -50,10 +52,10 @@ def app_icon():
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.cfg, self.graph = load_config(), Graph(); self.graph.set_catalog(load_catalog()); self.graph.overrides = self.cfg['ret_overrides']; self.graph.favorites = self.cfg['favorites']; self.hl_map, self.file = {}, None; self.hist, self.hi = [], -1; self.out_collapsed, self.out_h = False, 300
+        self.cfg, self.graph = load_config(), Graph(); self.graph.set_catalog(load_catalog()); self.graph.overrides = self.cfg['ret_overrides']; self.graph.favorites = self.cfg['favorites']; self.hl_map, self.file, self.saved_json = {}, None, None; self.hist, self.hi = [], -1; self.out_collapsed, self.out_h = False, 300
         if not MANAGER.plugins: MANAGER.load_all(self.cfg.get('plugins_disabled', []), enabled=self.cfg.get('plugins_enabled', []), data=self.cfg.setdefault('plugin_data', {}))
         MANAGER.window = self; MANAGER.data = self.cfg.setdefault('plugin_data', {})
-        self.setWindowTitle(f'Odyssey Node Editor v{__version__}'); self.setWindowIcon(app_icon()); self.resize(1500, 920)
+        self.setWindowTitle(tr('Odyssey Node Editor v{0}', __version__)); self.setWindowIcon(app_icon()); self.resize(1500, 920)
         self.scene = GraphScene(self.graph); self.view = GraphView(self.scene); self.view.setFocusPolicy(Qt.StrongFocus)
         box = QWidget(); bl = QVBoxLayout(box); bl.setContentsMargins(0, 0, 0, 0); bl.setSpacing(0); self.gbar = QFrame(); self.gbar.setObjectName('gbar'); bl.addWidget(self.gbar); bl.addWidget(self.view, 1); self.setCentralWidget(box)
         self.runner = BuildRunner(); self.snap_t = QTimer(self, singleShot=True, interval=400); self.snap_t.timeout.connect(self.snapshot)
@@ -99,7 +101,7 @@ class MainWindow(QMainWindow):
         return a
 
     def _actions(self):
-        self.aNew, self.aOpen, self.aSave = self._act('New', self.new, 'Ctrl+N'), self._act('Open…', self.open, 'Ctrl+O'), self._act('Save as…', self.save_as, 'Ctrl+S')
+        self.aNew, self.aOpen, self.aSave = self._act('New', self.new, 'Ctrl+N'), self._act('Open…', self.open, 'Ctrl+O'), self._act('Save', self.save, 'Ctrl+S'); self.aSaveAs = self._act('Save as…', self.save_as, 'Ctrl+Shift+S')
         self.aWrite, self.aBuild = self._act('Write to project', self.write_project, 'Ctrl+E'), self._act('Compile', self.build, 'F5')
         self.aUndo, self.aRedo = self._act('Undo', lambda: self.hist_go(-1), 'Ctrl+Z'), self._act('Redo', lambda: self.hist_go(1), 'Ctrl+Y')
         self.aDup, self.aDel = self._act('Duplicate', self.scene.duplicate_selected, 'Ctrl+D', True), self._act('Delete', self.scene.delete_selected, 'Del', True)
@@ -122,17 +124,18 @@ class MainWindow(QMainWindow):
         self.aRepair = self._act('Repair exlaunch base (rebuild cmake)…', self.repair_base)
         self.aLibSave, self.aLibOpen = self._act('Save selection to library…', self.save_to_library), self._act('Open the library…', self.open_library)
         mb = self.menuBar()
-        for title, acts in (('File', [self.aNew, 'TPL', self.aOpen, self.aSave, None, self.aImport, None, self.aSaveStart, self.aClearStart, None, self.aWrite, None, self.aQuit]),
+        for title, acts in (('File', [self.aNew, 'TPL', self.aOpen, 'REC', self.aSave, self.aSaveAs, None, self.aImport, None, self.aSaveStart, self.aClearStart, None, self.aWrite, None, self.aQuit]),
                             ('Edit', [self.aUndo, self.aRedo, None, self.aClear, self.aFind, self.aBrowse, self.aPlugFn, self.aDup, self.aDel, self.aAll, None, self.aGroup, self.aUngroup, self.aNote, self.aArrange]),
                             ('Library', [self.aLibSave, self.aLibOpen, 'LIB']),
                             ('View', [self.aFit, self.aZin, self.aZout, None, self.aFold]), ('Tools', [self.aBuild, self.aRepair, self.aCfg, self.aPrefs, self.aShortcuts]), ('Plugins', [self.aPlugins, self.aPlugDir]), ('Help', [self.aHelp, self.aTour, self.aAbout])):
-            m = mb.addMenu(title)
+            m = mb.addMenu(title); m.setObjectName('menu.' + title)
             for a in acts:
                 if a is None: m.addSeparator()
+                elif a == 'REC': self.recentMenu = m.addMenu('Open recent'); self.recentMenu.aboutToShow.connect(self.fill_recent_menu)
                 elif a == 'TPL': self.tplMenu = m.addMenu('New from template'); self.tplMenu.aboutToShow.connect(self.fill_template_menu)
                 elif a == 'LIB': m.addSeparator(); self.libMenu = m.addMenu('Insert from library'); self.libMenu.aboutToShow.connect(self.fill_lib_menu)
                 else: m.addAction(a)
-        for a, nm in ((self.aNew, 'new'), (self.aOpen, 'open'), (self.aSave, 'save'), (self.aUndo, 'undo'), (self.aRedo, 'redo'), (self.aBrowse, 'library'), (self.aPlugFn, 'func'), (self.aFind, 'search'), (self.aGroup, 'group'), (self.aNote, 'note'), (self.aFit, 'fit'),
+        for a, nm in ((self.aNew, 'new'), (self.aOpen, 'open'), (self.aSave, 'save'), (self.aSaveAs, 'save'), (self.aUndo, 'undo'), (self.aRedo, 'redo'), (self.aBrowse, 'library'), (self.aPlugFn, 'func'), (self.aFind, 'search'), (self.aGroup, 'group'), (self.aNote, 'note'), (self.aFit, 'fit'),
                       (self.aClear, 'trash'), (self.aLibOpen, 'group'), (self.aPrefs, 'settings'), (self.aWrite, 'write'), (self.aBuild, 'play_fill'), (self.aCfg, 'settings'), (self.aRepair, 'wrench'), (self.aAbout, 'help'), (self.aHelp, 'help'), (self.aPlugins, 'plus'), (self.aShortcuts, 'settings'), (self.aPlugDir, 'open')): bind(a, nm, size=20)
         # graph icon bar: plain buttons in three groups (left / centre / right), no overflow chevron
         self.tips = tips = {self.aClear: 'Clear', self.aBrowse: 'Open the catalog', self.aFind: 'Find in graph'}
@@ -151,8 +154,26 @@ class MainWindow(QMainWindow):
         bar.addWidget(gl); bar.addStretch(1); bar.addWidget(gc); bar.addStretch(1); bar.addWidget(gr)
         wd = max(gl.sizeHint().width(), gr.sizeHint().width()); gl.setMinimumWidth(wd); gr.setMinimumWidth(wd)  # centre group stays centred
         gr.layout().setAlignment(Qt.AlignRight)
-        vm = [m for m in mb.findChildren(QMenu) if m.title() == 'View'][0]; vm.addSeparator()
-        self.lookMenu = vm.addMenu(icon('palette', size=16), 'Theme'); self.build_theme_menu(); self.build_plugin_menu(); self.build_help_menu(); self.init_shortcuts()
+        vm = mb.findChild(QMenu, 'menu.View'); vm.addSeparator()
+        self.lookMenu = vm.addMenu(icon('palette', size=16), 'Theme'); self.build_language_menu(); self.build_theme_menu(); self.build_plugin_menu(); self.build_help_menu(); self.init_shortcuts()
+
+    def build_language_menu(self):
+        """View > Language: the globe icon stays the same in every language, so it can always be found. The choice is applied at the next start."""
+        self.langMenu = self.menuBar().findChild(QMenu, 'menu.View').addMenu(icon('globe', size=16), 'Language'); self.langMenu.setObjectName('menu.Language'); grp = QActionGroup(self); grp.setExclusive(True)
+        cur = i18n.CUR
+        for code, name in i18n.LANGS:
+            a = self.langMenu.addAction(name); a.setCheckable(True); a.setChecked(code == cur); grp.addAction(a); a.triggered.connect(lambda _=False, c=code: self.choose_language(c))
+
+    def choose_language(self, code):
+        if code == i18n.CUR: return
+        self.cfg['language'] = code; save_config(self.cfg)
+        box = QMessageBox(QMessageBox.Question, i18n.tr_in(code, 'Language'), i18n.tr_in(code, 'The language changes the next time the program starts.\n\nRestart now?'), parent=self)
+        yes, no = box.addButton(i18n.tr_in(code, 'Restart now'), QMessageBox.AcceptRole), box.addButton(i18n.tr_in(code, 'Later'), QMessageBox.RejectRole); box.exec()
+        if box.clickedButton() is yes: self._restart = True; self.close()
+        else: self.sync_language_menu()
+
+    def sync_language_menu(self):
+        for a, (code, _name) in zip(self.langMenu.actions(), i18n.LANGS): a.setChecked(code == i18n.CUR)
 
     def build_theme_menu(self):
         """View > Theme: built-in themes + the ones added by plugins; accent colors."""
@@ -170,14 +191,14 @@ class MainWindow(QMainWindow):
     # ---------- plugins ----------
     def build_plugin_menu(self):
         """Plugins menu: explorer, then the actions plugins added with api.add_action, then the folder shortcut."""
-        m = [x for x in self.menuBar().findChildren(QMenu) if x.title() == 'Plugins'][0]; m.clear(); m.addAction(self.aPlugins)
+        m = self.menuBar().findChild(QMenu, 'menu.Plugins'); m.clear(); m.addAction(self.aPlugins)
         for old in getattr(self, 'plugin_actions', []): self.removeAction(old)
         self.plugin_actions = []; first = True
         for pl in MANAGER.plugins:
             if not pl.enabled: continue
             for i, (label, fn, key) in enumerate(pl.actions):
                 if first: m.addSeparator(); first = False
-                a = QAction(f'{label}', self); a.setObjectName(f'plugin.{pl.id}.{i}'); a.setStatusTip(f'{pl.title} (plugin)'); a.triggered.connect(lambda _=False, fn=fn: self.run_plugin_action(fn))
+                a = QAction(f'{label}', self); a.setObjectName(f'plugin.{pl.id}.{i}'); a.setStatusTip(tr('{0} (plugin)', pl.title)); a.triggered.connect(lambda _=False, fn=fn: self.run_plugin_action(fn))
                 if key: a.setShortcut(QKeySequence(key))
                 m.addAction(a); self.plugin_actions.append(a)
         m.addSeparator(); m.addAction(self.aPlugDir)
@@ -189,7 +210,7 @@ class MainWindow(QMainWindow):
 
     def build_help_menu(self):
         """Help menu: Tutorials (editor + plugins, in one window), Interface tour, About."""
-        m = [x for x in self.menuBar().findChildren(QMenu) if x.title() == 'Help'][0]; m.clear(); m.addAction(self.aHelp); m.addAction(self.aTour); m.addSeparator(); m.addAction(self.aAbout)
+        m = self.menuBar().findChild(QMenu, 'menu.Help'); m.clear(); m.addAction(self.aHelp); m.addAction(self.aTour); m.addSeparator(); m.addAction(self.aAbout)
 
     def open_help(self, start=0):
         topics = self.help_topics()
@@ -227,7 +248,7 @@ class MainWindow(QMainWindow):
                 if pl.enabled:
                     for name, path, desc in pl.templates:
                         if name == arg: self.new_from_template(path); return
-            QMessageBox.information(self, 'Help', f'The template "{arg}" is not available (is its plugin enabled?).')
+            QMessageBox.information(self, 'Help', tr('The template "{0}" is not available (is its plugin enabled?).', arg))
         elif kind == 'browser': self.add_plugin_function(None, arg)
         elif kind == 'base':
             pl = MANAGER.get(arg)
@@ -302,7 +323,12 @@ class MainWindow(QMainWindow):
     def _load_start(self):
         mode = self.cfg.get('pref_startup', 'session'); self.graph.clear()
         try:
-            if mode == 'session': self.graph.load_json(GRAPHF.read_text('utf-8'))
+            if mode == 'session':
+                self.graph.load_json(GRAPHF.read_text('utf-8')); lf = self.cfg.get('last_file')
+                if lf and Path(lf).is_file():  # the session belongs to a file: Ctrl+S keeps saving into it (the title shows if it has unsaved changes)
+                    self.file = lf
+                    try: g0 = Graph(); g0.load_json(Path(lf).read_text('utf-8')); self.saved_json = g0.to_json()
+                    except Exception: self.file = None
             elif mode == 'startup': self.graph.load_json(STARTF.read_text('utf-8'))
             elif mode == 'example': sample(self.graph)
         except Exception: self.graph.clear(); sample(self.graph)
@@ -317,8 +343,8 @@ class MainWindow(QMainWindow):
 
     # ---------- state ----------
     def _status(self):
-        n = len(self.graph.cat); self.pill.setText(f'{n} functions' if n else 'catalog missing'); self.pill.setStyleSheet('' if n else f"color:{C['ko']}")
-        self.zoomL.setText(f'{self.view.zoom_percent()} %'); self.cntL.setText(f'{len(self.graph.nodes)} nodes · {len(self.graph.edges)} links')
+        n = len(self.graph.cat); self.pill.setText(tr('{0} functions', n) if n else 'catalog missing'); self.pill.setStyleSheet('' if n else f"color:{C['ko']}")
+        self.zoomL.setText(f'{self.view.zoom_percent()} %'); self.cntL.setText(tr('{0} nodes · {1} links', len(self.graph.nodes), len(self.graph.edges)))
 
     def build_state(self, running):
         self._building = running; self.bBuild.setText(' Stop' if running else ' Compile'); self.bBuild.setIcon(icon('stop_fill' if running else 'play_fill', '#ffffff', 16))
@@ -342,7 +368,7 @@ class MainWindow(QMainWindow):
         self.probs.clear()
         for lvl, nid, msg in self.graph.problems():
             col = {'err': C['ko'], 'warn': '#e6a23c'}.get(lvl, '#4f8cf0'); it = QListWidgetItem(icon({'err': 'error', 'warn': 'warn'}.get(lvl, 'info'), col, 16), msg); it.setData(Qt.UserRole, nid); self.probs.addItem(it)
-        self.tabs.setTabText(2, f'Problems ({self.probs.count()})' if self.probs.count() else 'Problems')
+        self.tabs.setTabText(2, tr('Problems ({0})', self.probs.count()) if self.probs.count() else 'Problems')
 
     def on_changed(self):
         self.refresh_code(); self.snap_t.start()
@@ -354,7 +380,7 @@ class MainWindow(QMainWindow):
     def includes_changed(self): self.graph.inc = self.incs.toPlainText(); self.refresh_code(); self.snap_t.start()
 
     def snapshot(self):
-        s = self.graph.to_json()
+        s = self.graph.to_json(); self.update_title()
         if self.hi >= 0 and self.hist[self.hi] == s: return
         self.hist = (self.hist[:self.hi + 1] + [s])[-80:]; self.hi = len(self.hist) - 1
         if self.cfg.get('pref_autosave', True):
@@ -364,6 +390,7 @@ class MainWindow(QMainWindow):
     def hist_go(self, d):
         self.snapshot(); i = self.hi + d
         if 0 <= i < len(self.hist): self.hi = i; self.load_state(self.hist[i])
+        self.update_title()
 
     def load_state(self, s):
         self.graph.load_json(s); self.incs.blockSignals(True); self.incs.setPlainText(self.graph.inc); self.incs.blockSignals(False)
@@ -409,13 +436,13 @@ class MainWindow(QMainWindow):
     def new_from_template(self, path):
         if (self.graph.nodes or self.graph.notes) and QMessageBox.question(self, 'New from template', 'Replace the current graph with this template?\n(Ctrl+Z brings your graph back.)') != QMessageBox.Yes: return
         try: self.load_state(Path(path).read_text('utf-8'))
-        except Exception as e: QMessageBox.critical(self, 'Template', f'Cannot load the template:\n{e}'); return
-        self.file = None; self.snapshot(); self.view.fit(); self.statusBar().showMessage('Template loaded: use Write to project (Ctrl+E) or Compile (F5)', 6000)
+        except Exception as e: QMessageBox.critical(self, 'Template', tr('Cannot load the template:\n{0}', e)); return
+        self.file = None; self.saved_json = None; self.snapshot(); self.view.fit(); self.statusBar().showMessage('Template loaded: use Write to project (Ctrl+E) or Compile (F5)', 6000)
         for pl in MANAGER.plugins:
             if pl.enabled and pl.base and any(Path(path) == t[1] for t in pl.templates): BD.offer(self, pl, 'This template uses it.')
 
     def offer_base(self, pl):
-        return BD.offer(self, pl, f'"{pl.title}" is now enabled.')
+        return BD.offer(self, pl, tr('"{0}" is now enabled.', pl.title))
 
     def edit_node(self, nid):
         n = self.graph.nodes.get(nid)
@@ -502,8 +529,9 @@ class MainWindow(QMainWindow):
 
     # ---------- files ----------
     def new(self):
+        if not self.confirm_discard(): return
         if self.cfg.get('pref_confirm_new', True) and QMessageBox.question(self, 'New graph', 'Clear the current graph?' + ('\n\nYour startup graph will be loaded.' if STARTF.exists() else '')) != QMessageBox.Yes: return
-        self.graph.clear(); self.graph.inc = DEFAULT_INC; self.file = None  # includes go back to the standard list (a startup graph brings its own)
+        self.graph.clear(); self.graph.inc = DEFAULT_INC; self.file = None; self.saved_json = None  # includes go back to the standard list (a startup graph brings its own)
         if self.cfg.get('pref_new', 'startup') == 'startup' and STARTF.exists():
             try: self.graph.load_json(STARTF.read_text('utf-8'))
             except Exception: self.graph.clear()  # unreadable startup graph: an empty one
@@ -513,23 +541,72 @@ class MainWindow(QMainWindow):
     def clear_graph(self):
         """Remove every node, link, group and comment (the file name and the includes list are kept)."""
         if not self.graph.nodes and not self.graph.groups and not self.graph.notes: self.statusBar().showMessage('The graph is already empty', 3000); return
-        if QMessageBox.question(self, 'Clear the graph', f'Remove all {len(self.graph.nodes)} nodes, the links, groups and comments?\n(Ctrl+Z brings them back.)') != QMessageBox.Yes: return
+        if QMessageBox.question(self, 'Clear the graph', tr('Remove all {0} nodes, the links, groups and comments?\n(Ctrl+Z brings them back.)', len(self.graph.nodes))) != QMessageBox.Yes: return
         inc = self.graph.inc; self.graph.clear(); self.graph.inc = inc
         self.scene.rebuild(keep=[]); self.insp.show_node(0); self.scene.changed.emit(); self.statusBar().showMessage('Graph cleared', 3000)
 
     def open(self):
-        p, _ = QFileDialog.getOpenFileName(self, 'Open a graph', '', FILTER_OPEN)
-        if not p: return
-        try: self.load_state(Path(p).read_text('utf-8'))
-        except Exception as e: QMessageBox.critical(self, 'Cannot open file', str(e)); return
-        self.file = p; self.snapshot(); self.view.fit(); self.statusBar().showMessage(f'Opened: {p}', 4000)
+        if not self.confirm_discard(): return
+        start = str(Path(self.file).parent) if self.file else ''
+        p, _ = QFileDialog.getOpenFileName(self, 'Open a graph', start, FILTER_OPEN)
+        if p: self.open_path(p)
+
+    def open_path(self, p):
+        """Open a graph file; it becomes the current file (Ctrl+S saves back into it)."""
+        try: txt = Path(p).read_text('utf-8'); self.load_state(txt)
+        except Exception as e: QMessageBox.critical(self, 'Cannot open file', str(e)); return False
+        self.file = str(p); self.saved_json = self.graph.to_json(); self.remember(self.file); self.snapshot(); self.view.fit(); self.statusBar().showMessage(tr('Opened: {0}', p), 4000); return True
+
+    def save(self):
+        """Ctrl+S: write into the current file; ask for a name only when there is none (or it is an old .json)."""
+        if not self.file or Path(self.file).suffix.lower() != '.odn': return self.save_as()
+        return self.write_graph(self.file)
 
     def save_as(self):
         start = str(Path(self.file).with_suffix('.odn')) if self.file else 'my_mod.odn'
         p, _ = QFileDialog.getSaveFileName(self, 'Save the graph', start, FILTER_SAVE)
-        if p:
-            p = str(Path(p).with_suffix('.odn'))  # graphs are always saved as .odn (.json is only read, for older files)
-            Path(p).write_text(self.graph.to_json(), 'utf-8'); self.file = p; self.statusBar().showMessage(f'Saved: {p}', 4000)
+        if not p: return False
+        return self.write_graph(str(Path(p).with_suffix('.odn')))  # graphs are always saved as .odn (.json is only read, for older files)
+
+    def write_graph(self, p):
+        txt = self.graph.to_json()
+        try:
+            tmp = Path(p + '.tmp'); tmp.write_text(txt, 'utf-8'); os.replace(tmp, p)  # a crash while writing never leaves a half file
+        except Exception as e: QMessageBox.critical(self, 'Cannot save', f'{p}\n\n{e}'); return False
+        self.file = p; self.saved_json = txt; self.remember(p); self.update_title(); self.statusBar().showMessage(tr('Saved: {0}', p), 4000); return True
+
+    # ---- current file, unsaved changes, recent files ----
+    def dirty(self):
+        if self.file: return self.graph.to_json() != getattr(self, 'saved_json', None)
+        return False   # an untitled graph is kept by the session autosave; nothing to ask about
+
+    def update_title(self):
+        name = Path(self.file).name if self.file else 'Untitled'
+        self.setWindowTitle(tr('{0}{1} - Odyssey Node Editor v{2}', name, ' •' if self.dirty() else '', __version__)); self.setWindowModified(False)
+        if self.file: self.cfg['last_file'] = self.file
+
+    def confirm_discard(self):
+        """True when it is fine to replace / close the current graph: nothing unsaved, or the person chose Save / Discard."""
+        if not self.dirty(): return True
+        box = QMessageBox(QMessageBox.Question, 'Unsaved changes', tr('Save the changes to {0}?', Path(self.file).name), QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel, self); box.setDefaultButton(QMessageBox.Save)
+        r = box.exec()
+        if r == QMessageBox.Save: return bool(self.save())
+        return r == QMessageBox.Discard
+
+    def remember(self, p):
+        rec = [x for x in self.cfg.get('recent', []) if x != p]; self.cfg['recent'] = ([str(p)] + rec)[:10]; save_config(self.cfg)
+
+    def fill_recent_menu(self):
+        m = self.recentMenu; m.clear(); rec = self.cfg.get('recent', [])
+        for i, p in enumerate(rec):
+            a = m.addAction(f'&{i + 1 if i < 9 else 0}  {Path(p).name}', lambda _=False, p=p: self.open_recent(p)); a.setToolTip(p); a.setStatusTip(p)
+        if not rec: m.addAction('(no recent file)').setEnabled(False)
+        else: m.addSeparator(); m.addAction('Clear the list', lambda: (self.cfg.__setitem__('recent', []), save_config(self.cfg)))
+
+    def open_recent(self, p):
+        if not Path(p).is_file():
+            QMessageBox.information(self, 'Open recent', tr('This file no longer exists:\n{0}', p)); self.cfg['recent'] = [x for x in self.cfg.get('recent', []) if x != p]; save_config(self.cfg); return
+        if self.confirm_discard(): self.open_path(p)
 
     def save_cpp(self):
         p, _ = QFileDialog.getSaveFileName(self, 'Save the code', 'main.cpp', 'C++ (*.cpp *.hpp *.h)')
@@ -540,10 +617,10 @@ class MainWindow(QMainWindow):
         p = main_cpp_path(self.cfg)
         if not p: QMessageBox.information(self, 'Write to project', 'Set your exlaunch project in Settings first.'); self.configure(); return False
         if Path(p).suffix.lower() not in ('.cpp', '.hpp', '.h'): QMessageBox.warning(self, 'Write to project', 'The generated file must end in .cpp, .hpp or .h.'); return False
-        if not Path(p).parent.is_dir(): QMessageBox.warning(self, 'Write to project', f'Folder not found: {Path(p).parent}'); return False
+        if not Path(p).parent.is_dir(): QMessageBox.warning(self, 'Write to project', tr('Folder not found: {0}', Path(p).parent)); return False
         BD.check_graph(self, self.graph); txt = self.code.toPlainText()
         with open(p, 'w', encoding='utf-8', newline='\n') as f: f.write(txt)
-        self.statusBar().showMessage(f'Written: {p} ({len(txt.encode())} bytes)', 5000); return True
+        self.statusBar().showMessage(tr('Written: {0} ({1} bytes)', p, len(txt.encode())), 5000); return True
 
     # ---------- build ----------
     def build(self):
@@ -551,16 +628,16 @@ class MainWindow(QMainWindow):
         if not self.cfg['build_cmd']: QMessageBox.information(self, 'Compile', 'The build command is empty: see Settings.'); self.configure(); return
         if not self.cfg.get('build_env') and not self.ask_env(): return
         env, cwd = self.cfg['build_env'], self.cfg['project_dir'] or None
-        if cwd and not (env == 'wsl' and cwd.startswith('/')) and not Path(cwd).is_dir(): QMessageBox.warning(self, 'Compile', f'Project folder not found: {cwd}'); return
+        if cwd and not (env == 'wsl' and cwd.startswith('/')) and not Path(cwd).is_dir(): QMessageBox.warning(self, 'Compile', tr('Project folder not found: {0}', cwd)); return
         self.suggest_build_cmd()
         errs = [m for lvl, _, m in self.graph.problems() if lvl == 'err']
-        if errs and QMessageBox.question(self, 'Compile', f'The graph has {len(errs)} error(s), for example:\n\n• ' + '\n• '.join(errs[:3]) + '\n\nCompile anyway?') != QMessageBox.Yes: self.tabs.setCurrentWidget(self.probs); return
+        if errs and QMessageBox.question(self, 'Compile', tr('The graph has {0} error(s), for example:\n\n• ', len(errs)) + '\n• '.join(errs[:3]) + '\n\nCompile anyway?') != QMessageBox.Yes: self.tabs.setCurrentWidget(self.probs); return
         self.toggle_output(False); self.tabs.setCurrentWidget(self.log); self.log.clear()
         self.log.appendPlainText('Step 1/2: write the generated code into the project')
         if not self.write_project(): self.log.appendPlainText('  could not write the file: nothing was compiled.'); return
-        p = main_cpp_path(self.cfg); self.log.appendPlainText(f'  {p}  ({len(self.code.toPlainText().splitlines())} lines)')
+        p = main_cpp_path(self.cfg); self.log.appendPlainText(tr('  {0}  ({1} lines)', p, len(self.code.toPlainText().splitlines())))
         where = f'{env}{" · " + self.cfg.get("wsl_distro", "") if env == "wsl" and self.cfg.get("wsl_distro") else ""}'
-        self.log.appendPlainText(f'Step 2/2: build   [{where}]  in {cwd or "(current folder)"}\n$ {self.cfg["build_cmd"]}\n'); self.t0 = time.monotonic()
+        self.log.appendPlainText(tr('Step 2/2: build   [{0}]  in {1}\n$ {2}\n', where, cwd or '(current folder)', self.cfg['build_cmd'])); self.t0 = time.monotonic()
         self.build_state(True); self.bst.setText('Build running…'); self.bst.setStyleSheet(''); self.runner.start(self.cfg['build_cmd'], cwd, env, self.cfg.get('wsl_distro', ''))
 
     def suggest_build_cmd(self):
@@ -582,14 +659,14 @@ class MainWindow(QMainWindow):
         p, _ = QFileDialog.getSaveFileName(self, 'Save the build log', 'build_log.txt', 'Text files (*.txt);;All files (*)')
         if p:
             with open(p, 'w', encoding='utf-8', newline='\n') as f: f.write(self.log.toPlainText())
-            self.statusBar().showMessage(f'Log saved: {p}', 5000)
+            self.statusBar().showMessage(tr('Log saved: {0}', p), 5000)
 
     def copy_log(self, errors_only):
         t = self.log.toPlainText()
         if errors_only:
             keys = re.compile(r'error|\bfailed\b|\*\*\*|undefined reference|fatal|warning|cannot|no such file|not found|<3>', re.I)
             t = '\n'.join(l for l in t.splitlines() if keys.search(l)) or '(no error lines found)'
-        QGuiApplication.clipboard().setText(t); self.statusBar().showMessage('Copied ' + ('error lines' if errors_only else 'the console') + f' ({len(t)} characters)', 4000)
+        QGuiApplication.clipboard().setText(t); self.statusBar().showMessage(tr('Copied the error lines ({0} characters)', len(t)) if errors_only else tr('Copied the console ({0} characters)', len(t)), 4000)
 
     def repair_base(self):
         """Delete <project>/build, then re-run cmake with the exlaunch toolchain."""
@@ -597,11 +674,11 @@ class MainWindow(QMainWindow):
         if not self.cfg['project_dir']: QMessageBox.information(self, 'Repair', 'Set the exlaunch project folder in Settings first.'); self.configure(); return
         if not self.cfg.get('build_env') and not self.ask_env(): return
         env, cwd = self.cfg['build_env'], self.cfg['project_dir']
-        if not (env == 'wsl' and cwd.startswith('/')) and not Path(cwd).is_dir(): QMessageBox.warning(self, 'Repair', f'Project folder not found: {cwd}'); return
-        if QMessageBox.question(self, 'Repair exlaunch base', f'This DELETES the "build" folder of:\n{cwd}\n\nand runs:\ncmake -B build -G "Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake\n\nContinue?') != QMessageBox.Yes: return
+        if not (env == 'wsl' and cwd.startswith('/')) and not Path(cwd).is_dir(): QMessageBox.warning(self, 'Repair', tr('Project folder not found: {0}', cwd)); return
+        if QMessageBox.question(self, 'Repair exlaunch base', tr('This DELETES the "build" folder of:\n{0}\n\nand runs:\ncmake -B build -G "Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake\n\nContinue?', cwd)) != QMessageBox.Yes: return
         cm = 'cmake -B build -G "Unix Makefiles" -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain.cmake'
         cmd = f'(if exist build rmdir /s /q build) & {cm}' if env == 'windows' or (env == '' and os.name == 'nt') else f'rm -rf build && {cm}'
-        self.toggle_output(False); self.tabs.setCurrentWidget(self.log); self.log.clear(); self.log.appendPlainText(f'[repair · {env}] $ {cmd}\n')
+        self.toggle_output(False); self.tabs.setCurrentWidget(self.log); self.log.clear(); self.log.appendPlainText(tr('[repair · {0}] $ {1}\n', env, cmd))
         self.build_state(True); self.bst.setText('Repair running…'); self.bst.setStyleSheet(''); self.runner.start(cmd, cwd, env, self.cfg.get('wsl_distro', ''))
 
     def build_then(self, cb):
@@ -629,9 +706,9 @@ class MainWindow(QMainWindow):
         self.log.moveCursor(self.log.textCursor().MoveOperation.End); self.log.insertPlainText(ANSI.sub('', s).replace('\r\n', '\n')); self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
 
     def build_done(self, code):
-        self.build_state(False); ok = code == 0; self.bst.setText('Build succeeded' if ok else f'Build failed (code {code})'); self.bst.setStyleSheet(f'color:{"#4ecb8a" if ok else "#ef5b5b"}')
+        self.build_state(False); ok = code == 0; self.bst.setText('Build succeeded' if ok else tr('Build failed (code {0})', code)); self.bst.setStyleSheet(f'color:{"#4ecb8a" if ok else "#ef5b5b"}')
         el = time.monotonic() - getattr(self, 't0', time.monotonic()); errs = [l.strip() for l in self.log.toPlainText().splitlines() if re.search(r'\berror\b|undefined reference|\*\*\*', l)]
-        if not ok and errs: self.bst.setText(f'Build failed ({len(errs)} error line(s))')
+        if not ok and errs: self.bst.setText(tr('Build failed ({0} error line(s))', len(errs)))
         self.log.appendPlainText(f'\n{"Build succeeded" if ok else "Build failed (code " + str(code) + ")"} in {el:.1f}s')
         if not ok and errs: self.log.appendPlainText('Main errors:\n  ' + '\n  '.join(l[-200:] for l in errs[:5]) + '\n(use "Copy errors" to copy every error line)')
         elif ok: self.log.appendPlainText('Next step: Ryujinx tab > "Install mod and launch".')
@@ -653,7 +730,7 @@ class MainWindow(QMainWindow):
             for nm, a in self.accentActs.items(): pm = QPixmap(14, 14); pm.fill(QColor(self.theme_accent(nm))); a.setIcon(QIcon(pm))
 
     def apply_prefs(self):
-        c = self.cfg; qss = f'QPlainTextEdit{{font-size:{int(c["pref_code_size"])}pt}}'
+        c = self.cfg; qss = 'QPlainTextEdit{font-size:%dpt}' % int(c['pref_code_size'])
         self.code.setStyleSheet(qss); self.incs.setStyleSheet(qss); self.log.setStyleSheet(qss)
         self.code.setLineWrapMode(QPlainTextEdit.WidgetWidth if c['pref_wrap'] else QPlainTextEdit.NoWrap)
         inst, cst = self.graph.install, self.graph.calls; self.graph.install, self.graph.calls = c.get('pref_install', 'symbol'), c.get('pref_calls', 'direct'); self.scene.autogroup = bool(c.get('pref_autogroup', True)); self.scene.dropmenu = bool(c.get('pref_dropmenu', True)); self.code.set_numbers(c.get('pref_linenumbers', True)); self.scene.links_top = bool(c.get('pref_links_top')); self.scene.apply_z(); self.view.show_grid = bool(c['pref_grid']); self.view.viewport().update(); self.scene.snap = bool(c['pref_snap'])
@@ -685,7 +762,7 @@ class MainWindow(QMainWindow):
     # ---------- startup graph ----------
     def save_startup(self):
         had = STARTF.exists(); n = len(self.graph.nodes)
-        if QMessageBox.question(self, 'Startup graph', ('Replace your startup graph with the current graph' if had else 'Use the current graph as your startup graph') + f' ({n} node{"s" if n != 1 else ""})?\n\nFile > New and the startup option will open it.') != QMessageBox.Yes: return
+        if QMessageBox.question(self, 'Startup graph', tr_n('Replace your startup graph with the current graph ({0} node)?\n\nFile > New and the startup option will open it.', 'Replace your startup graph with the current graph ({0} nodes)?\n\nFile > New and the startup option will open it.', n) if had else tr_n('Use the current graph as your startup graph ({0} node)?\n\nFile > New and the startup option will open it.', 'Use the current graph as your startup graph ({0} nodes)?\n\nFile > New and the startup option will open it.', n)) != QMessageBox.Yes: return
         try: STARTF.write_text(self.graph.to_json(), 'utf-8'); self.statusBar().showMessage('Saved as your startup graph: File > New and the startup option now use it', 6000)
         except Exception as e: QMessageBox.critical(self, 'Startup graph', str(e))
 
@@ -706,7 +783,7 @@ class MainWindow(QMainWindow):
         box = QMessageBox(self); box.setWindowTitle('Import C++'); box.setIcon(QMessageBox.Information); box.setText(f'{Path(p).name}: ' + rep[0])
         box.setInformativeText('Conversion is best effort: anything not understood is kept as custom code, comments are not kept.' + ('\n\n' + '\n'.join('• ' + r for r in rep[1:8]) if len(rep) > 1 else ''))
         bR, bA = box.addButton('Replace the current graph', QMessageBox.AcceptRole), box.addButton('Add to the current graph', QMessageBox.AcceptRole); box.addButton(QMessageBox.Cancel); box.exec(); c = box.clickedButton()
-        if c is bR: self.load_state(g2.to_json()); self.file = None; self.snapshot(); self.view.fit()
+        if c is bR: self.load_state(g2.to_json()); self.file = None; self.saved_json = None; self.snapshot(); self.view.fit()
         elif c is bA:
             r = self.scene.itemsBoundingRect(); pos = QPointF(r.left(), r.bottom() + 120) if self.graph.nodes else QPointF(0, 0)
             new, notes = library.insert(self.graph, library.fragment(g2, set(g2.nodes), Path(p).stem), pos.x(), pos.y()); self.scene.commit(keep=new)
@@ -719,11 +796,11 @@ class MainWindow(QMainWindow):
         if not sel: QMessageBox.information(self, 'Library', 'Select a function (or a few nodes) first.'); return
         roots = [i for i in sel if self.graph.nodes[i].type in ('func', 'hook')]; expand = bool(roots) and len(roots) == len(sel)
         default = self.graph.nodes[roots[0]].f.get('name') or self.graph.title(self.graph.nodes[roots[0]]) if roots else 'Template'
-        what = 'Saves this function with everything it uses (its blocks, values, called functions, globals).' if expand else f'Saves the {len(sel)} selected node(s) as a template.'
+        what = 'Saves this function with everything it uses (its blocks, values, called functions, globals).' if expand else tr('Saves the {0} selected node(s) as a template.', len(sel))
         name, ok = QInputDialog.getText(self, 'Save to library', what + '\nName:', text=default)
         if not ok or not name.strip(): return
-        if (library.LIBDIR / (library.safe_name(name) + library.EXT)).exists() and QMessageBox.question(self, 'Library', f'"{name}" already exists. Replace it?') != QMessageBox.Yes: return
-        p = library.save(self.graph, sel, name.strip(), expand=expand); self.pal.set_library(library.entries()); self.statusBar().showMessage(f'Saved to your library: {p}', 6000)
+        if (library.LIBDIR / (library.safe_name(name) + library.EXT)).exists() and QMessageBox.question(self, 'Library', tr('"{0}" already exists. Replace it?', name)) != QMessageBox.Yes: return
+        p = library.save(self.graph, sel, name.strip(), expand=expand); self.pal.set_library(library.entries()); self.statusBar().showMessage(tr('Saved to your library: {0}', p), 6000)
 
     def open_library(self):
         d = LibraryDialog(self); d.insert_requested.connect(lambda p: self.insert_lib(p, None)); d.exec(); self.pal.set_library(library.entries())
@@ -735,9 +812,9 @@ class MainWindow(QMainWindow):
 
     def insert_lib(self, path, pos):
         try: frag = library.load(path)
-        except Exception as e: QMessageBox.critical(self, 'Library', f'Cannot read {path}: {e}'); return
+        except Exception as e: QMessageBox.critical(self, 'Library', tr('Cannot read {0}: {1}', path, e)); return
         pos = pos or self.center(); new, notes = library.insert(self.graph, frag, pos.x(), pos.y()); self.scene.commit(keep=new)
-        self.statusBar().showMessage(f'Inserted {frag.get("name", "")}' + (' - ' + '; '.join(notes) if notes else ''), 7000)
+        self.statusBar().showMessage(tr('Inserted {0}', frag.get('name', '')) + (' - ' + '; '.join(notes) if notes else ''), 7000)
 
     # ---------- groups, comments, layout ----------
     def group_selected(self):
@@ -786,8 +863,8 @@ class MainWindow(QMainWindow):
     def catalog_ready(self, cat): self.graph.set_catalog(cat); self.scene.rebuild(); self.refresh_code()
 
     def about(self):
-        QMessageBox.about(self, 'Odyssey Node Editor', f'<h3>Made by WibiDev</h3><b>Odyssey Node Editor</b> v{__version__}: a node editor that generates exlaunch C++ (Super Mario Odyssey 1.0.0).<br><br>Credits: OdysseyDecomp (MonsterDruide1 and contributors), exlaunch (shadowninja108), '
-                          'sead and nnheaders (open-ead), SMO-Exlaunch-Base (CraftyBoss) and LunaKit (Amethyst-szs) for the Dear ImGui plugin, Dear ImGui (Omar Cornut), Qt for Python (PySide6), icons drawn after the Lucide style. Inspired by Unreal Engine Blueprints.<br>Unofficial mod tool, not affiliated with Nintendo.')
+        QMessageBox.about(self, 'Odyssey Node Editor', tr('<h3>Made by WibiDev</h3><b>Odyssey Node Editor</b> v{0}: a node editor that generates exlaunch C++ (Super Mario Odyssey 1.0.0).<br><br>Credits: OdysseyDecomp (MonsterDruide1 and contributors), exlaunch (shadowninja108), sead and nnheaders (open-ead), SMO-Exlaunch-Base (CraftyBoss) and LunaKit (Amethyst-szs) for the Dear ImGui plugin, Dear ImGui (Omar Cornut), Qt for Python (PySide6), icons drawn after the Lucide style. Inspired by Unreal Engine Blueprints.<br>Unofficial mod tool, not affiliated with Nintendo.', __version__))
 
     def closeEvent(self, ev):
-        self.snapshot(); self.runner.stop(); s = QSettings('OdysseyNodes', 'OdysseyNodes'); s.setValue('geom', self.saveGeometry()); s.setValue('state', self.saveState()); super().closeEvent(ev)
+        if not self.confirm_discard(): ev.ignore(); return
+        self.snapshot(); save_config(self.cfg); self.runner.stop(); s = QSettings('OdysseyNodes', 'OdysseyNodes'); s.setValue('geom', self.saveGeometry()); s.setValue('state', self.saveState()); super().closeEvent(ev)

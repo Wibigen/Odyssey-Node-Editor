@@ -1,4 +1,5 @@
 """Manage the saved functions (.odnf files in your data folder): insert, rename, delete."""
+from .i18n import tr
 import json
 from pathlib import Path
 from PySide6.QtCore import Qt, QUrl, Signal
@@ -27,7 +28,7 @@ class LibraryDialog(QDialog):
     def fill(self):
         self.list.clear()
         for p, name, desc, n in library.entries():
-            it = QListWidgetItem(f'{name}   ({n} nodes)'); it.setData(Qt.UserRole, str(p)); it.setData(Qt.UserRole + 1, (name, desc)); self.list.addItem(it)
+            it = QListWidgetItem(tr('{0}   ({1} nodes)', name, n)); it.setData(Qt.UserRole, str(p)); it.setData(Qt.UserRole + 1, (name, desc)); self.list.addItem(it)
         if self.list.count(): self.list.setCurrentRow(0)
         self.show_info(self.list.currentItem())
 
@@ -55,5 +56,5 @@ class LibraryDialog(QDialog):
 
     def delete(self):
         c = self.cur()
-        if c and QMessageBox.question(self, 'Library', f'Delete "{c[1]}" from your library?') == QMessageBox.Yes:
+        if c and QMessageBox.question(self, 'Library', tr('Delete "{0}" from your library?', c[1])) == QMessageBox.Yes:
             Path(c[0]).unlink(missing_ok=True); self.fill()

@@ -1,4 +1,5 @@
 """Ryujinx helpers: find its data folder, copy the compiled exefs into the mod folder, start the game. No Qt here, so it can be tested alone."""
+from .i18n import tr
 import fnmatch, json, os, re, shutil, subprocess, sys
 from pathlib import Path
 
@@ -104,7 +105,7 @@ def clean_mod(cfg):
     """Empty the mod folder (<data>/mods/contents/<title id>/<name>) completely before a fresh install. Refuses anything that is not exactly that folder."""
     mod = mod_dir(cfg); contents = (Path(norm(cfg['ryu_data'])) / 'mods' / 'contents' / TITLE_ID)
     name = (cfg.get('ryu_mod') or '').strip()
-    if not name or name.strip('.') == '' or os.path.normpath(str(mod.parent)) != os.path.normpath(str(contents)): raise RuntimeError(f'Refusing to clean {mod}: it is not a mod folder inside {contents}.')
+    if not name or name.strip('.') == '' or os.path.normpath(str(mod.parent)) != os.path.normpath(str(contents)): raise RuntimeError(tr('Refusing to clean {0}: it is not a mod folder inside {1}.', mod, contents))
     if not mod.exists(): return 0
     n = 0
     for x in mod.iterdir():
@@ -117,15 +118,15 @@ def clean_mod(cfg):
 def install(cfg):
     """Copy the compiled files into <mod>/exefs. Returns (destination, [copied names]); raises RuntimeError with a readable message."""
     b = build_dir(cfg)
-    if b is None or not b.is_dir(): raise RuntimeError(f'Build folder not found: {b or "(no project folder set)"}\nCompile first, or set the build folder in the Ryujinx settings.')
+    if b is None or not b.is_dir(): raise RuntimeError(tr('Build folder not found: {0}\nCompile first, or set the build folder in the Ryujinx settings.', b or '(no project folder set)'))
     files = find_files(b, cfg.get('ryu_files'))
-    if not files: raise RuntimeError(f'No compiled file ({"; ".join(patterns(b, cfg.get("ryu_files")))}) found in {b}.\nCompile the project first.')
+    if not files: raise RuntimeError(tr('No compiled file ({0}) found in {1}.\nCompile the project first.', '; '.join(patterns(b, cfg.get('ryu_files'))), b))
     mod = mod_dir(cfg); dest = mod / 'exefs'
     try:
         clean_mod(cfg)
         dest.mkdir(parents=True, exist_ok=True)
         for f in files: shutil.copy2(f, dest / f.name)
-    except OSError as e: raise RuntimeError(f'Could not copy to {dest}: {e}')
+    except OSError as e: raise RuntimeError(tr('Could not copy to {0}: {1}', dest, e))
     return dest, [f.name for f in files]
 
 
@@ -162,7 +163,7 @@ def disable_others(cfg):
         for nm in names:
             if nm.lower() not in seen and nm.lower() != ours: entries.append({kk('name'): nm, kk('path'): str(contents / nm), kk('enabled'): False}); off.append(nm)
         jf.parent.mkdir(parents=True, exist_ok=True); jf.write_text(json.dumps(raw, indent=2), 'utf-8'); return off
-    except (OSError, ValueError) as e: raise RuntimeError(f'Could not update {jf}: {e}')
+    except (OSError, ValueError) as e: raise RuntimeError(tr('Could not update {0}: {1}', jf, e))
 
 
 def restore_others(cfg):
@@ -174,7 +175,7 @@ def restore_others(cfg):
         if txt.strip() == 'null': jf.unlink(missing_ok=True)
         else: jf.write_text(txt, 'utf-8')
         b.unlink(); return True
-    except OSError as e: raise RuntimeError(f'Could not restore {jf}: {e}')
+    except OSError as e: raise RuntimeError(tr('Could not restore {0}: {1}', jf, e))
 
 
 def command(cfg):
@@ -201,5 +202,5 @@ def launch(cfg):
         out = open(log, 'wb'); out.write(('$ ' + ' '.join(a) + '\n').encode('utf-8', 'replace')); out.flush()
         kw = {'creationflags': 0x00000200 | 0x08000000} if os.name == 'nt' else {'start_new_session': True}  # new process group, no console window
         p = subprocess.Popen(a, cwd=str(exe.parent), stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, close_fds=True, **kw)
-    except OSError as e: raise RuntimeError(f'Could not start Ryujinx: {e}')
+    except OSError as e: raise RuntimeError(tr('Could not start Ryujinx: {0}', e))
     return a, p, log
